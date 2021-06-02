@@ -82,12 +82,12 @@ begin
 	syncronizer : process(okClk, rst_n)
 	begin
 		if (rst_n = '0') then
-			rome_a_req_latch_0 <= '0';
-			rome_a_req_latch_1 <= '0';
-			rome_b_req_latch_0 <= '0';
-			rome_b_req_latch_1 <= '0';
-			node_req_latch_0   <= '0';
-			node_req_latch_1   <= '0';
+			rome_a_req_latch_0 <= '1';
+			rome_a_req_latch_1 <= '1';
+			rome_b_req_latch_0 <= '1';
+			rome_b_req_latch_1 <= '1';
+			node_req_latch_0   <= '1';
+			node_req_latch_1   <= '1';
 		--            spinn_req_latch_0  <= '0';
 		--            spinn_req_latch_1  <= '0';
 		--            out_ack_latch_0    <= '0';

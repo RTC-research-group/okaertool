@@ -3,6 +3,7 @@
   <Mappings Location="Common Libraries/IEEE" Library="ieee"/>
   <Mappings Location="Common Libraries/IEEE Synopsys" Library="ieee"/>
   <Mappings Location="Common Libraries" Library="not mapped"/>
+  <Mappings Location="FrontPanel-Ubuntu18.04LTS-x64-5.2.3" Library="not mapped"/>
   <Mappings Location="src/top" Library="not mapped"/>
   <Mappings Location="vivado" Library="not mapped"/>
   <Mappings Location="Common Libraries/STD" Library="std"/>

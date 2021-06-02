@@ -808,7 +808,13 @@ begin
 				i := i + 1;
 			end loop;
 		end procedure read_USB_data;
-
+		
+		procedure send_sw_rst(rst_command : std_logic_vector(31 downto 0)) is
+		begin
+			SetWireInValue(x"02", rst_command, NO_MASK);
+			UpdateWireIns;
+		end procedure;
+		
 	begin
 		FrontPanelReset;
 		wait for 1 ns;
@@ -818,6 +824,11 @@ begin
 		-- Select input 1
 		select_input(x"0000_0001");
 		wait for 1 us;
+		-- Send sw rst
+		send_sw_rst(x"0000_0001");
+		send_sw_rst(x"0000_0000");
+		-- Enable command=ECU
+		select_command(x"0000_0001");
 		-- Disable inputs
 		select_input(x"0000_0000");
 		wait for 1 us;

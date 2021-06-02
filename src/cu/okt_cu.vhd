@@ -47,11 +47,11 @@ architecture Behavioral of okt_cu is
 	-- OK Endpoints
 	signal ep00wire         : std_logic_vector(BUFFER_BITS_WIDTH - 1 downto 0);
 	signal ep01wire         : std_logic_vector(BUFFER_BITS_WIDTH - 1 downto 0);
+	signal ep02wire         : std_logic_vector(BUFFER_BITS_WIDTH - 1 downto 0);
 	signal epA0_datain      : std_logic_vector(BUFFER_BITS_WIDTH - 1 downto 0);
 	signal epA0_read        : std_logic;
 	signal epA0_blockstrobe : std_logic; -- @suppress "signal epA0_blockstrobe is never read"
 	signal epA0_ready       : std_logic;
-	signal ep40trigger      : std_logic_vector(BUFFER_BITS_WIDTH - 1 downto 0);
 
 	signal status_n : std_logic_vector(LEDS_BITS_WIDTH - 1 downto 0);
 
@@ -102,6 +102,16 @@ begin
 			ep_dataout => ep01wire
 		);
 
+	-- WireIn to receive sw rst from USB
+	rst_EP : work.FRONTPANEL.okWireIn
+		port map(
+			okHE       => okHE,
+			ep_addr    => x"02",
+			ep_dataout => ep02wire
+		);
+	rst_sw      <= ep02wire(0);
+	status_n(0) <= ep02wire(0);
+
 	-- PipeOut to send data out using the USB
 	data_out_EP : work.FRONTPANEL.okBTPipeOut
 		port map(
@@ -113,17 +123,6 @@ begin
 			ep_datain      => epA0_datain,
 			ep_ready       => epA0_ready
 		);
-
-	-- Trigger to get a rst signal from the software
-	rst_sw_EP : work.FRONTPANEL.okTriggerIn
-		port map(
-			okHE       => okHE,
-			ep_addr    => x"40",
-			ep_clk     => okClk,
-			ep_trigger => ep40trigger
-		);
-	rst_sw      <= ep40trigger(0);
-	status_n(0) <= ep40trigger(0);
 
 	-- Reset command and input_sel signals
 	process(rst_n, ep00wire, ep01wire)
@@ -140,6 +139,11 @@ begin
 	-- Multiplexer that select the data path depending of the command
 	command_multiplexer : process(n_command, epA0_read, n_ecu_data, n_ecu_ready)
 	begin
+		n_ecu_rd                               <= '0';
+		epA0_datain                            <= (others => '0');
+		epA0_ready                             <= '0';
+		status_n(LEDS_BITS_WIDTH - 1 downto 1) <= (others => '0');
+
 		case n_command is
 			when "01" =>                -- ECU command. Send out captured event to USB
 				n_ecu_rd    <= epA0_read;
@@ -148,10 +152,7 @@ begin
 				status_n(1) <= '1';     -- Set ECU led
 
 			when others =>
-				n_ecu_rd    <= '0';
-				epA0_datain <= (others => '0');
-				epA0_ready  <= '0';
-				status_n    <= (others => '0');
+				null;
 		end case;
 	end process;
 
