@@ -159,7 +159,7 @@ begin
 		                                          --    check that the block transfer begins (0-255)
 		variable pipeInSize       : integer := 1024; -- REQUIRED: byte (must be even) length of default
 		--    PipeIn; Integer 0-2^32
-		variable pipeOutSize      : integer := 1024; -- REQUIRED: byte (must be even) length of default
+		variable pipeOutSize      : integer := 4*1024; -- REQUIRED: byte (must be even) length of default
 		--    PipeOut; Integer 0-2^32
 		variable registerSetSize  : integer := 32; -- Size of array for register set commands.
 
@@ -779,10 +779,10 @@ begin
 			i := 0;
 			while i < num_USB_transfers loop
 				-- Read values
-				ReadFromBlockPipeOut(x"a0", 512, pipeOutSize);
+				ReadFromBlockPipeOut(x"a0", 1024, pipeOutSize);
 
 				j := 0;
-				while j < 256 loop
+				while j < 4*1024 loop
 					-- Timestamp
 					ReadPipe(j)     := pipeOut(j);
 					ReadPipe(j + 1) := pipeOut(j + 1);

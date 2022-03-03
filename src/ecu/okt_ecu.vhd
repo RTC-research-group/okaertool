@@ -15,7 +15,8 @@ entity okt_ecu is                       -- Event Capture Unit
 		ack_n     : out std_logic;
 		out_data  : out std_logic_vector(BUFFER_BITS_WIDTH - 1 downto 0);
 		out_rd    : in  std_logic;
-		out_ready : out std_logic
+		out_ready : out std_logic;
+		status    : out std_logic_vector(LEDS_BITS_WIDTH - 1 downto 0)
 	);
 end okt_ecu;
 
@@ -33,6 +34,11 @@ architecture Behavioral of okt_ecu is
 	signal fifo_r_en   : std_logic;
 	signal fifo_empty  : std_logic;
 	signal fifo_full   : std_logic;
+	signal fifo_almost_full   : std_logic;
+	
+	signal usb_ready : std_logic;
+	signal fifo_r_en_end : std_logic; 
+    signal fifo_r_en_latched : std_logic;
 
 	-- DEBUG
 	attribute MARK_DEBUG : string;
@@ -41,6 +47,7 @@ architecture Behavioral of okt_ecu is
 begin
 
 	ack_n <= n_ack_n;
+	status <= "00000" & usb_ready & fifo_empty & fifo_full;
 
 	caputre_fifo : entity work.okt_fifo
 		generic map(
@@ -54,11 +61,13 @@ begin
 			r_data => fifo_r_data,
 			r_en   => fifo_r_en,
 			empty  => fifo_empty,
-			full   => fifo_full
+			full   => fifo_full,
+			almost_full => fifo_almost_full
 		);
+
 	out_data  <= fifo_r_data;
 	fifo_r_en <= out_rd;
-	out_ready <= not fifo_empty;
+	out_ready <= usb_ready;
 
 	signals_update : process(clk, rst_n)
 	begin
@@ -132,6 +141,34 @@ begin
 					n_okt_ecu_control_state <= idle;
 				end if;
 		end case;
+	end process;
+	
+	control_usb_ready : process(clk, rst_n) is
+	   variable usb_burst : integer;
+	begin
+		if rst_n = '0' then
+			usb_ready <= '0';
+			usb_burst := 0;
+			fifo_r_en_end <= '0';
+			fifo_r_en_latched <= '0';
+			
+		elsif rising_edge(clk) then
+		    fifo_r_en_latched <= fifo_r_en;
+		    if fifo_r_en_latched = '1' and fifo_r_en = '0' then
+		        fifo_r_en_end <= '1';
+		    else
+		        fifo_r_en_end <= '0';
+		    end if;
+			if fifo_almost_full = '1' or fifo_full = '1' then
+				usb_ready <= '1';
+				usb_burst := USB_BURST_WORDS;
+			elsif usb_ready = '1' then
+			    usb_burst := usb_burst - 1;
+			    if usb_burst = 0 or fifo_r_en_end = '1' then
+			        usb_ready <= '0';
+			    end if;
+			end if;
+		end if;
 	end process;
 
 end Behavioral;

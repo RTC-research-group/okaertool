@@ -56,12 +56,13 @@ architecture Behavioral of okt_top is
 	signal imu_aer_data : std_logic_vector(BUFFER_BITS_WIDTH - 1 downto 0);
 	signal imu_ack_n    : std_logic;
 
-	signal status_n : std_logic_vector(LEDS_BITS_WIDTH - 1 downto 0);
+	signal status_cu : std_logic_vector(LEDS_BITS_WIDTH - 1 downto 0);
+	signal status_ecu : std_logic_vector(LEDS_BITS_WIDTH - 1 downto 0);
 
 begin
 
 	-- 0 = led on; 1 = led off 
-	leds  <= not status_n;
+	leds  <= not (status_ecu(2 downto 0) & "000" & status_cu(1 downto 0));
 	rst_n <= not (rst or rst_sw);
 
 	-- Sync input signals
@@ -104,7 +105,7 @@ begin
 			ecu_rd    => ecu_rd,
 			ecu_ready => ecu_ready,
 			input_sel => input_sel,
-			status    => status_n
+			status    => status_cu
 		);
 
 	imu_inst : entity work.okt_imu
@@ -135,7 +136,8 @@ begin
 			ack_n     => imu_ack_n,
 			out_data  => ecu_data,
 			out_rd    => ecu_rd,
-			out_ready => ecu_ready
+			out_ready => ecu_ready,
+			status => status_ecu
 		);
 
 end Behavioral;

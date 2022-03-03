@@ -3,6 +3,7 @@ use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
 use ieee.math_real.all;
 use work.okt_global_pkg.all;
+use work.okt_fifo_pkg.all;
 
 entity okt_fifo is -- Fifo
     generic(
@@ -16,7 +17,8 @@ entity okt_fifo is -- Fifo
         r_data : out std_logic_vector(BUFFER_BITS_WIDTH - 1 downto 0);
         r_en   : in  std_logic;
         empty  : out std_logic;
-        full   : out std_logic
+        full   : out std_logic;
+        almost_full : out std_logic
     );
 end okt_fifo;
 
@@ -28,6 +30,8 @@ architecture Behavioral of okt_fifo is
     signal write_addr  : unsigned(ADDR_SIZE downto 0);
     signal output      : std_logic_vector(r_data'range);
     signal r_full      : std_logic;
+    signal r_almost_full : std_logic;
+    
 begin
     regFile : process(clk) is
     begin
@@ -40,6 +44,8 @@ begin
                 write_addr <= to_unsigned(0, write_addr'length);
                 output     <= (others => '0');
                 r_full     <= '0';
+                r_almost_full <= '0';
+                
             else
                 -- This accounts for the case that the FIFO is full, that is 
                 -- that the write address is one less than the read address
@@ -49,6 +55,12 @@ begin
                     r_full <= '0';
                 else
                     r_full <= r_full;
+                end if;
+                
+                if (write_addr - read_addr) >= to_unsigned(DEPTH - FIFO_ALM_FULL_OFFSET, write_addr'length) then
+                    r_almost_full <= '1';
+                else
+                    r_almost_full <= '0';
                 end if;
 
                 -- Handle the write enable line
@@ -93,6 +105,6 @@ begin
 
     empty <= '1' when (read_addr = write_addr) and (r_full = '0') else '0';
     full  <= r_full;
-
+    almost_full <= r_almost_full;
     r_data <= output;
 end Behavioral;
