@@ -35,7 +35,7 @@ entity okt_osu is						-- Output Sequencer Unit
            aer_data  	: in  STD_LOGIC_VECTOR (BUFFER_BITS_WIDTH - 1 downto 0);
            req_n 			: in  STD_LOGIC;
            ack_n 			: inout  STD_LOGIC;
-           osu_cmd 		: in  STD_LOGIC;
+           osu_cmd 		: in  STD_LOGIC_VECTOR (1 downto 0);
            osu_data 		: out  STD_LOGIC;
            osu_req_n 	: out  STD_LOGIC;
            osu_ack_n 	: in  STD_LOGIC
