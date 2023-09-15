@@ -23,12 +23,11 @@ entity okt_fifo is -- Fifo
 end okt_fifo;
 
 architecture Behavioral of okt_fifo is
-    --constant ADDR_SIZE : positive         := positive(ceil(log2(real(DEPTH))));
-    constant ADDR_SIZE : positive         := 14; 
-	 type registerFileType is array (0 to DEPTH - 1) of std_logic_vector(r_data'range);
+    constant ADDR_SIZE : positive         := positive(ceil(log2(real(DEPTH))));
+    type registerFileType is array (0 to DEPTH - 1) of std_logic_vector(r_data'range);
     signal registers   : registerFileType := (others => (others => '0'));
-    signal read_addr   : unsigned(ADDR_SIZE-1 downto 0);
-    signal write_addr  : unsigned(ADDR_SIZE-1 downto 0);
+    signal read_addr   : unsigned(ADDR_SIZE downto 0);
+    signal write_addr  : unsigned(ADDR_SIZE downto 0);
     signal output      : std_logic_vector(r_data'range);
     signal r_full      : std_logic;
     signal r_almost_full : std_logic;
