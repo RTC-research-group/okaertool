@@ -13,9 +13,13 @@ entity okt_ecu is                       -- Event Capture Unit
 		req_n     : in  std_logic;
 		aer_data  : in  std_logic_vector(BUFFER_BITS_WIDTH - 1 downto 0);
 		ecu_out_ack_n     : out std_logic;
+		
+		-- CU interface
 		out_data  : out std_logic_vector(BUFFER_BITS_WIDTH - 1 downto 0);
 		out_rd    : in  std_logic;
 		out_ready : out std_logic;
+		--
+		
 		status    : out std_logic_vector(LEDS_BITS_WIDTH - 1 downto 0);
 		cmd		 : in std_logic_vector(COMMAND_BIT_WIDTH - 1 downto 0)
 );
@@ -86,7 +90,8 @@ begin
 
 	end process signals_update;
 
-	process(r_okt_ecu_control_state, req_n, r_timestamp, aer_data, fifo_full, n_command)
+	-- input monitor: Stores data in fifo
+	input_monitor: process(r_okt_ecu_control_state, req_n, r_timestamp, aer_data, fifo_full, n_command)
 	begin
 		n_okt_ecu_control_state <= r_okt_ecu_control_state;
 		n_timestamp             <= r_timestamp + 1;

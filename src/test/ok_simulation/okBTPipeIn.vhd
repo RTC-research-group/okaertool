@@ -11,6 +11,7 @@ library IEEE;
 use IEEE.std_logic_1164.all;
 use work.parameters.all;
 use work.mappings.all;
+use std.env.finish;
 
 entity okBTPipeIn is
 	port (
@@ -64,7 +65,7 @@ begin
 		wait for 1ns;
 		if ((ep_addr < x"80") or (ep_addr > x"9F")) then
 			report "okBTPipeIn endpoint address outside valid range, must be between 0x80 and 0x9F" severity FAILURE;
-			std.env.finish;
+			finish;
 		end if;
 	end process;
 end arch;

@@ -10,8 +10,9 @@ package okt_global_pkg is
     constant OK_UHU_WIDTH_BUS          : integer := 32;
     constant OK_EH_WIDTH_BUS           : integer := 65;
     constant OK_HE_WIDTH_BUS           : integer := 113;
-    constant OK_NUM_okEHx_END_POINTS   : integer := 1;
+    constant OK_NUM_okEHx_END_POINTS   : integer := 2;
     constant LEDS_BITS_WIDTH           : integer := 8;
+	 constant TIMESTAMP_BITS_WIDTH : integer                                             := 32; --BUFFER_BITS_WIDTH;
 end okt_global_pkg;
 
 package body okt_global_pkg is

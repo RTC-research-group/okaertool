@@ -35,11 +35,12 @@ entity okt_top is
 end okt_top;
 
 architecture Behavioral of okt_top is
-
+	--sys signals
 	signal okClk : std_logic;
 	signal rst_n : std_logic;
 	signal rst_sw : std_logic;
 	
+	--latch signals
 	signal rome_a_req_latch_0 : std_logic;
 	signal rome_a_req_latch_1 : std_logic;
 	signal rome_b_req_latch_0 : std_logic;
@@ -47,22 +48,30 @@ architecture Behavioral of okt_top is
 	signal node_req_latch_0   : std_logic;
 	signal node_req_latch_1   : std_logic;
 
-	signal ecu_data  : std_logic_vector(BUFFER_BITS_WIDTH - 1 downto 0);
-	signal ecu_rd    : std_logic;
-	signal ecu_ready : std_logic;
+	--cu signals
+	signal in_ecu_data  : std_logic_vector(BUFFER_BITS_WIDTH - 1 downto 0);
+	signal in_ecu_rd    : std_logic;
+	signal in_ecu_ready : std_logic;
+	signal out_osu_data  : std_logic_vector(BUFFER_BITS_WIDTH - 1 downto 0);
+	signal out_osu_wr    : std_logic;
+	signal out_osu_ready : std_logic;	
 	signal input_sel : std_logic_vector(NUM_INPUTS - 1 downto 0);
-	signal ecu_osu_ack_n : std_logic;
-
+	
+	--imu signals
 	signal imu_req_n    : std_logic;
 	signal imu_aer_data : std_logic_vector(BUFFER_BITS_WIDTH - 1 downto 0);
 	signal imu_ack_n    : std_logic;
 
+	--status signals
 	signal status_cu 	: std_logic_vector(LEDS_BITS_WIDTH - 1 downto 0);
 	signal status_ecu	: std_logic_vector(LEDS_BITS_WIDTH - 1 downto 0);
 	
 	signal cmd : std_logic_vector(COMMAND_BIT_WIDTH - 1 downto 0);
+	
+	--osu signals
 	signal osu_ack: std_logic;
 	signal osu_imu_ack_n: std_logic;
+	signal ecu_osu_ack_n : std_logic;
 	
 
 begin
@@ -100,16 +109,24 @@ begin
 
 	cu_inst : entity work.okt_cu
 		port map(
+		--SYS
 			clk       => okClk,
 			rst_n     => rst_n,
 			rst_sw    => rst_sw,
+		--USB
 			okUH      => okUH,
 			okHU      => okHU,
 			okUHU     => okUHU,
 			okAA      => okAA,
-			ecu_data  => ecu_data,
-			ecu_rd    => ecu_rd,
-			ecu_ready => ecu_ready,
+		--ECU
+			ecu_data  => in_ecu_data,
+			ecu_rd    => in_ecu_rd,
+			ecu_ready => in_ecu_ready,
+		--OSU
+			osu_data  => out_osu_data,
+			osu_wr    => out_osu_wr,
+			osu_ready => out_osu_ready,
+		--INTERFACE
 			input_sel => input_sel,
 			status    => status_cu,
 			cmd => cmd
@@ -141,11 +158,10 @@ begin
 			req_n     => imu_req_n,
 			aer_data  => imu_aer_data,
 			ecu_out_ack_n     => ecu_osu_ack_n,
-			out_data  => ecu_data,
-			out_rd    => ecu_rd,
-			out_ready => ecu_ready,
+			out_data  => in_ecu_data,
+			out_rd    => in_ecu_rd,
+			out_ready => in_ecu_ready,
 			status    => status_ecu,
-			--TODO
 			cmd       => cmd 	--Add process depending on cmd PASS or MON
 		);
 		
@@ -157,6 +173,9 @@ begin
 			req_in_data_n => imu_req_n,
 			ecu_in_ack_n     => ecu_osu_ack_n,
 			cmd           => cmd,
+			in_data  => out_osu_data,
+			in_wr    => out_osu_wr,
+			in_ready => out_osu_ready,
 			node_in_data  => out_data,
 			node_req_n    => out_req_n,
 			node_in_osu_ack_n    => node_in_ack_n,

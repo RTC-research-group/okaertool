@@ -39,7 +39,7 @@ BEGIN
             rst_n     => rst_n,
             req_n     => req_n,
             aer_data  => aer_data,
-            ack_n     => ack_n,
+            ecu_out_ack_n     => ack_n,
             out_data  => out_data,
             out_rd    => out_rd,
             out_ready => out_ready

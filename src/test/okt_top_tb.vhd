@@ -821,45 +821,36 @@ begin
 		FrontPanelReset;
 		wait for 1 ns;
 		select_command(x"0000_0001"); 
+		--select_input(x"0000_0001");
+		--wait for 100 ns;
+		--select_input(x"0000_0002");
+		--wait for 100 ns;
+		--select_input(x"0000_0004");
+		--wait for 100 ns;
 		select_input(x"0000_0001");
-		wait for 100 ns;
-		select_input(x"0000_0002");
-		wait for 100 ns;
-		select_input(x"0000_0004");
-		wait for 100 ns;
-		select_input(x"0000_0007");		
+		--wait for 10 ns;		
 		-- Check data
 		--read_USB_data(5);
-		wait for 1 us;
+		--wait for 100 ns;
 
 		-- Select input 1 and 2
-		select_command(x"0000_0002");
-		select_input(x"0000_0003");
+		--select_command(x"0000_0002");
+		--select_input(x"0000_0002");
+		--wait for 10 ns;
 		-- Check data
-		read_USB_data(1000);
-		wait for 1 us;
+		--read_USB_data(10);
+		--wait for 100 ns;
 		
 		-- Select input 1, 2 and 3
-		select_command(x"0000_0003");
-		select_input(x"0000_0007");
+		--select_command(x"0000_0003");
+		--select_input(x"0000_0004");
+		--wait for 10 ns;
 		-- Check data
-		read_USB_data(1000);
+		--read_USB_data(1024);
 
 		wait;
 	end process sim_process;
 	
---	input_process : process is
---		procedure input_management is
---			variable line_v : line;
---    		file read_file : text;
---    		
---		begin
---			file_open(read_file, "source.txt", read_mode);
---		end procedure;
---	begin
---		
---	end process input_process;
-
 	signals_update : process(hi_clk, rst_n)
 	begin
 		if rst_n = '0' then
