@@ -31,7 +31,7 @@ ARCHITECTURE behavior OF okt_osu_tb IS
 	signal out_osu_ready 	: std_logic;
 	
   
-	type state is (idle, req_fall, req_rise);
+	type state is (idle, req_fall, req_rise, req_fall_1, req_rise_1);
 	signal current_state, next_state, current_state_0, next_state_0 : state;
   
   constant CLK_period : time := 20 ns;
@@ -90,10 +90,10 @@ BEGIN
 		while 0<1 loop
 			node_ack_n <= '1';
 			wait until node_req_n = '0';
-			wait for CLK_period * 2;
+			wait for CLK_period * 1;
 			node_ack_n <= '0';
 			wait until node_req_n = '1';
-			wait for CLK_period * 2;
+			wait for CLK_period * 1;
 		end loop;
 
 --		wait for CLK_period * 5;
@@ -159,23 +159,35 @@ signals_update : process(clk, rst_n)
         next_state <= current_state;
         out_osu_data   <= (others => '0');
 		  out_osu_wr    <= '0';
+		  if out_osu_ready = '1' then
         case current_state is
             when idle =>
-                if out_osu_ready = '1' then
+                
                     next_state <= req_fall;
-                end if;
+                
 
             when req_fall =>
                 out_osu_wr    <= '1';
-                out_osu_data <= x"00000013"; 
+                out_osu_data <= x"0000001B"; 
                 next_state <= req_rise;
 
             when req_rise =>
                 out_osu_wr    <= '1';
-                out_osu_data <= x"00000003"; 
+                out_osu_data <= x"00060F03"; 
+                next_state <= req_fall_1;
+
+            when req_fall_1 =>
+                out_osu_wr    <= '1';
+                out_osu_data <= x"FFFFFFFF"; 
+                next_state <= req_rise_1;
+
+            when req_rise_1 =>
+                out_osu_wr    <= '1';
+                out_osu_data <= x"00000903"; 
                 next_state <= req_fall;
 
         end case;
+		  end if;
     end process;
     
 --    read_process : process(out_osu_ready)
