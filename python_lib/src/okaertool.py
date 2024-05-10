@@ -26,6 +26,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import sys
+import io
 
 class Spikes:
     """
@@ -51,6 +52,7 @@ class Okaertool:
         bit_file (string): Path to the FPGA .bit programming file
     """
     OUTPIPE_ENDPOINT = 0xA0
+    INPIPE_ENDPOINT = 0x93
     INWIRE_COMMAND_ENDPOINT = 0x00
     INWIRE_SELINPUT_ENDPOINT = 0x01
     NUM_INPUTS = 3
@@ -106,17 +108,43 @@ class Okaertool:
         self.device.SetWireInValue(self.INWIRE_SELINPUT_ENDPOINT, selinput_endpoint_value)
         self.device.UpdateWireIns()
 
+    def select_command(self, command=[]):
+        """
+        Select the commands that the user wants to work with.
+        :param command: List of commands. Possible values: 'idle' 'monitor' 'bypass' 'monitor_bypass' 'sequencer'
+        :return:
+        """
+
+        command_endpoint_value = 0x00000000
+        if len(command) != 0:
+            if 'idle' in command:
+                command_endpoint_value += 0  # Set 0 in the bit number 0
+            if 'monitor' in command:
+                command_endpoint_value += 1  # Set 1 in the bit number 0
+            if 'bypass' in command:
+                command_endpoint_value += 2  # Set 1 in the bit number 1
+            if 'monitor_bypass' in command:
+                command_endpoint_value += 3  # Set 1 in the bit number 0 and 1
+            if 'sequencer' in command:
+                command_endpoint_value += 4  # Set 1 in the bit number 2
+
+        print('Valor command:', command_endpoint_value)
+
+        self.device.SetWireInValue(self.INWIRE_COMMAND_ENDPOINT, command_endpoint_value)
+        self.device.UpdateWireIns()
+
     def monitor(self, buffer_length, events):
         """
-        Get the information captured by the tool and save it in different spikes structs depending on the selected
-        inputs
+        Get the information captured by the tool (ECU) and save it in different spikes structs depending on the selected
+        inputs. First, the events/spikes are collected in the IMU, next are captured in the ECU and finally, events
+        /spikes are sent from CU to PC by USB port.
+
         :param buffer_length: Number of bytes to be read from the tool
         :param events: Number of events collected with non-zero address and timestamp other than /xff/xff/xff/xff
         :return: spikes: List of captured spikes (ts, addr)
         """
         # Enable capture function
-        self.device.SetWireInValue(self.INWIRE_COMMAND_ENDPOINT, 0x00000001)
-        self.device.UpdateWireIns()
+        self.select_command('monitor')
         # Define a list of spikes (ts, addr) to collect spikes from all inputs
         spikes = [Spikes() for x in range(self.NUM_INPUTS)]
         # Read information from the device
@@ -125,6 +153,18 @@ class Okaertool:
         num_read_bytes = self.device.ReadFromBlockPipeOut(self.OUTPIPE_ENDPOINT, self.USB_BLOCK_SIZE, buffer)
         # Int type buffer
         buffer_list = list(buffer)
+        # Buffer binary file
+        # np.save(r"C:\Users\PabloSQ_2023\PycharmProjects\Okaertool_local\okaertool-master\okaertool-master\python_lib\src", buffer)
+        # Buffer text file
+
+        # np.savetxt('buffer_text', buffer, fmt='%x')
+
+        # Open file in binary write mode
+        binary_file = open("my_file.txt", "wb")
+
+        # Write bytes to file
+        binary_file.write(buffer)
+
 
         # Numpy Matrix with the 8 bytes of AER protocol
         Matrix_Runner_z = 0
@@ -208,6 +248,7 @@ class Okaertool:
         addr_x_histogram = []
         addr_y_histogram = []
         pol_histogram = []
+
         i = 0
         j = 2
         k = 3
@@ -234,84 +275,78 @@ class Okaertool:
         except IndexError as e:
             print('ERROR', e)
 
-        # try:
-        #     for (i, q, v) in zip(range(n_filas), range(n_filas)):
-        #
-        #         n_binary_x = bin(int(float(np_matrix[i, k]))).lstrip('0b').zfill(8)
-        #         null_bit = str(n_binary_x[0])
-        #         addr_x = int(str(n_binary_x[1:8]), 2)
-        #         null_bit_histogram.append(null_bit)
-        #         addr_x_histogram.append(addr_x)
-        #
-        #         n_binary_y = bin(int(float(np_matrix[q, j]))).lstrip('0b').zfill(8)
-        #         pol = str(n_binary_y[-1])
-        #         addr_y = int(str(n_binary_y[0:7]), 2)
-        #         pol_histogram.append(pol)
-        #         addr_y_histogram.append(addr_y)
-        #
-        #         n_binary_in = bin(int(float(np_matrix[i, j]))).lstrip('0b').zfill(8)
-        #
-        # except IndexError as e:
-        #     print('ERROR', e)
-
         # Creating a 2-dimensional array with the two addresses x and y
 
         data_histogram_np = np.array([addr_x_histogram, addr_y_histogram])
 
         data_histogram = list(zip(addr_x_histogram, addr_y_histogram))
+
         dictionary_xy = Counter(data_histogram)
+
+        keys_xy = list(dictionary_xy.keys())
         counts_xy = list(dictionary_xy.values())
         counts_xy_string = [str(i) for i in counts_xy]
+        keys_xy_string = [str(i) for i in keys_xy]
 
-        # # Plotting histogram figures
-        #
-        # fig, ax = plt.subplots()
-        # im = ax.imshow(data_histogram_np)
-        #
-        # dvs_dimension = []
-        # for i in range(128):
-        #     dvs_dimension.append(str(i))
-        #
-        # # Show all ticks and label them with the respective list entries
-        # ax.set_xticks(np.arange(len(str(addr_x_histogram))), labels=str(addr_x_histogram))
-        # ax.set_yticks(np.arange(len(str(addr_y_histogram))), labels=str(addr_y_histogram))
-        #
-        # # Rotate the tick labels and set their alignment.
-        # plt.setp(ax.get_xticklabels(), rotation=45, ha="right",
-        #          rotation_mode="anchor")
-        #
-        # # Loop over data dimensions and create text annotations.
-        # for i in range(len(addr_y_histogram)):
-        #     for j in range(len(addr_x_histogram)):
-        #         text = ax.text(j, i, [i, j],
-        #                        ha="center", va="center", color="w")
-        #
-        # ax.set_title("Addresses Counts")
-        # fig.tight_layout()
+        # # Plotting Histogram
 
-        # # Creating series from the lists
-        # freq_series_ts = pd.Series(ts_values)
-        # freq_series_addr = pd.Series(addr_values)
+        # x_addr = np.array(addr_x_histogram)
+        # y_addr = np.array(addr_y_histogram)
+        # try:
+        #     plt.hist2d(x_addr, y_addr, bins=16384, cmap='viridis')
+        #     plt.colorbar()
+        #     plt.xlabel('X')
+        #     plt.ylabel('Y')
+        #     plt.title('2-D Histogram')
+        # except TypeError as e:
+        #     print('ERROR', e)
 
-        # ts_keys_numbers = []
-        # for j in range(0, len(ts_keys)):
-        #     ts_keys_numbers.append(j)
-        #
-        # addr_keys_numbers = []
-        # for j in range(0, len(addr_keys)):
-        #     addr_keys_numbers.append(j)
+        # # Plotting bar figures
+        # -----------------------------------------------------------------------------------------
+        # df = pd.DataFrame({'addr_key': keys_xy_string, 'val_addr': counts_xy_string })
+        # df.plot.bar(x='addr_key', y='val_addr', rot=0)
 
-
-
-        # Plotting bar figures
-        # # -----------------------------------------------------------------------------------------
-        # df = pd.DataFrame({'ts_key': ts_keys_string, 'val_ts': ts_values})
-        # df.plot.bar(x='ts_key', y='val_ts', rot=0)
-        #
         # df = pd.DataFrame({'addr_key': addr_keys_string, 'val_addr': addr_values})
         # df.plot.bar(x='addr_key', y='val_addr', rot=0)
-        # # -----------------------------------------------------------------------------------------
+        # -----------------------------------------------------------------------------------------
 
-        plt.show()
+        # # 3D graph
+        #
+        # x = list(np.array(addr_x_histogram))
+        # y = list(np.array(addr_y_histogram))
+        # z = list(np.array(pol_histogram))
+        #
+        # ax = plt.figure().add_subplot(projection='3d')
+        # ax.scatter(x, y, z)
+        #
+        # plt.show()
 
         return spikes  # spikes
+
+    def bypass(self):
+        """
+        AER data is bypassed from IMU directly into OSU. This command can be used alongside "monitor".
+        """
+        # Enable Merge (or Passthrough) function
+        self.select_command('bypass')
+
+    def sequencer(self, buffer_length, file):
+        """
+        First, the events/spikes are sent from PC to CU by USB and next are sent to the OSU to obtain them through the
+        AER output.
+
+        :param file: txt file containing AER data in TS/ADDR format for the OSU to sequence
+        :return:
+        """
+        #file = "my_file.txt"
+
+        buf = bytearray(buffer_length*1024)  # Create a buffer of 1024 bytes
+        buf = np.array(buf, dtype=np.uint8)
+        with io.open(file, "rb") as fp:
+            size = fp.readinto(buf)  # Read binary data into the buffer
+
+
+        self.select_command('sequencer')
+
+        self.device.WriteToBlockPipeIn(self.INPIPE_ENDPOINT, self.USB_BLOCK_SIZE, buf)
+
