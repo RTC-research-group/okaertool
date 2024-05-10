@@ -26,3 +26,6 @@ Target(s): XEM6310-LX150
 - doc: Contains the layout of the desired final design.
 - FrontPanel-Ubuntu18.04LTS-x64-5.2.3: Documentation.
 
+  # Block Diagram
+  
+
