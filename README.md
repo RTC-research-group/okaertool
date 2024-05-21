@@ -9,8 +9,6 @@ This repository contains the source code for an AER (Address Event Representatio
 ISE Version: Xilinx ISE 14.7
 Architecture: Spartan-6
 Target(s): XEM6310-LX150
-<img align="right"  src="https://github.com/RTC-research-group/okaertool/blob/OSU_Testbench/doc/okaertool.png"/>
-
 
 # Repository folders
 - src: API source code of the device.
@@ -25,4 +23,7 @@ Target(s): XEM6310-LX150
 - python_lib: Contains a python program to test the performance of the device in real time.
 - doc: Contains the layout of the desired final design.
 - FrontPanel-Ubuntu18.04LTS-x64-5.2.3: Documentation.
+
+  # Block Diagram
+  <img align="right"  src="https://github.com/RTC-research-group/okaertool/blob/master/doc/okaertool.png"/>
 
