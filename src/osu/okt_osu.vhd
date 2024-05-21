@@ -23,6 +23,7 @@ use ieee.std_logic_unsigned.all;        -- @suppress "Deprecated package"
 use ieee.numeric_std.all;
 use work.okt_osu_pkg.all;
 use work.okt_global_pkg.all;
+use work.okt_fifo_pkg.all;
 --use work.okt_top_pkg.all;
 
 entity okt_osu is						-- Output Sequencer Unit
@@ -52,12 +53,6 @@ end okt_osu;
 
 architecture Behavioral of okt_osu is
 
-	--Bit Masking for OutputMux
-	constant Mask_MON     :    std_logic_vector(2 downto 0):="001";
-	constant Mask_PASS    :    std_logic_vector(2 downto 0):="010";
-	constant Mask_PASSMON :    std_logic_vector(2 downto 0):="011";
-	constant Mask_SEQ     :    std_logic_vector(2 downto 0):="100";
-	
 	-- FIFO signals
 	signal fifo_w_data 		  : std_logic_vector(BUFFER_BITS_WIDTH - 1 downto 0);
 	signal fifo_w_en   		  : std_logic;
@@ -67,6 +62,8 @@ architecture Behavioral of okt_osu is
 	signal fifo_full   		  : std_logic;
 	signal fifo_almost_full   : std_logic;
 	signal fifo_almost_empty  : std_logic;
+	signal fifo_fill_count 	  : integer range OSU_FIFO_DEPTH - 1 downto 0;
+	--signal usb_burst : integer;
 	
 	signal usb_ready 			  : std_logic;
 	signal fifo_w_en_end 	  : std_logic; 
@@ -84,27 +81,50 @@ architecture Behavioral of okt_osu is
 	signal rise_timestamp, next_timestamp : std_logic_vector(TIMESTAMP_BITS_WIDTH - 1 downto 0);
 	type state is (idle, timestamp_check, wait_ack_rise, data_trigger_0, data_trigger_1,data_trigger_2, wait_ovf);
 	signal r_okt_osu_control_state, n_okt_osu_control_state : state;
+	
+	attribute enum_encoding : string;
+	attribute enum_encoding of state : type is "IDLE 000, timestamp_check 001, wait_ack_rise 010, data_trigger_0 011, data_trigger_1 100, data_trigger_2 101, wait_ovf 110";
+
 
 begin
 
 	n_command <= cmd;
 	status <= "00000" & usb_ready & fifo_empty & fifo_full;
 	
-		sequencer_fifo : entity work.okt_fifo
+--		sequencer_fifo : entity work.okt_fifo
+--		generic map(
+--			DEPTH => OSU_FIFO_DEPTH
+--		)
+--		port map(
+--			clk    => clk,
+--			rst_n  => rst_n,
+--			w_data => fifo_w_data,
+--			w_en   => fifo_w_en,
+--			r_data => fifo_r_data,
+--			r_en   => fifo_r_en,
+--			empty  => fifo_empty,
+--			full   => fifo_full,
+--			almost_full => fifo_almost_full,
+--			almost_empty => fifo_almost_empty
+--		);
+		
+		ring_buffer : entity work.ring_buffer
 		generic map(
-			DEPTH => OSU_FIFO_DEPTH
+			RAM_DEPTH => OSU_FIFO_DEPTH,
+			RAM_WIDTH => 32
 		)
 		port map(
 			clk    => clk,
-			rst_n  => rst_n,
-			w_data => fifo_w_data,
-			w_en   => fifo_w_en,
-			r_data => fifo_r_data,
-			r_en   => fifo_r_en,
+			rst  => rst_n,
+			wr_data => fifo_w_data,
+			wr_en   => fifo_w_en,
+			rd_data => fifo_r_data,
+			rd_en   => fifo_r_en,
 			empty  => fifo_empty,
 			full   => fifo_full,
-			almost_full => fifo_almost_full,
-			almost_empty => fifo_almost_empty
+			full_next => fifo_almost_full,
+			fill_count => fifo_fill_count,
+			empty_next => fifo_almost_empty
 		);
 		
 			fifo_w_data  <= in_data;
@@ -148,11 +168,11 @@ begin
 				node_req_n <= out_req;
 				out_ack <= node_in_osu_ack_n;
 				
-			--when "101" => --DEBUG: TODO
-			--	node_in_data <= aer_data;
-			--	node_req_n <= out_req;
-			--	out_ack <= node_in_osu_ack_n;
-			--	ecu_node_out_ack_n <= ecu_in_ack_n;
+			when "101" => --DEBUG: TODO
+				node_in_data <= aer_data;
+				node_req_n <= out_req;
+				out_ack <= node_in_osu_ack_n;
+				ecu_node_out_ack_n <= ecu_in_ack_n;
 
 			when others => --TODO
 			
@@ -216,7 +236,7 @@ begin
 				if (limit_ts = x"FFFFFFFF") then
 					fifo_r_en                        <= '1';
 					n_okt_osu_control_state 			<= wait_ovf;
-				elsif (limit_ts > 0 and rise_timestamp > limit_ts - 2) then
+				elsif (limit_ts > 0 and (rise_timestamp > limit_ts - 2 or rise_timestamp +2 > limit_ts)) then
 					fifo_r_en                        <= '1';
 					n_okt_osu_control_state          <= data_trigger_0;
 					next_timestamp                      <= (others => '0');
@@ -254,12 +274,47 @@ begin
 	end process output_sequencer;
 		
 	
+----------------------------------------------------------------------------------------------------------------------
+----Control USB.
+----------------------------------------------------------------------------------------------------------------------
+--	--Control USB: TODO: que no se bloquee al intentar llenarse de datos
+--	control_usb_ready : process(clk, rst_n) is
+--		variable usb_burst : integer;
+--	begin
+--		if rst_n = '0' then --RESET
+--			usb_ready <= '0';
+--			usb_burst := 0;
+--			fifo_w_en_end <= '0';
+--			fifo_w_en_latched <= '0';
+--			
+--		elsif rising_edge(clk) then --NORMAL
+--			 fifo_w_en_latched <= fifo_w_en;									-- latched = enable	
+--			if fifo_w_en_latched = '1' and fifo_w_en = '0' then		-- if latched = 1 and enable = 0
+--				  fifo_w_en_end <= '1';											-- end = 1
+--			else																		-- else
+--				  fifo_w_en_end <= '0';											-- end = 0
+--			end if;		
+--			if fifo_almost_empty = '1' or fifo_empty = '1' then 		-- if fifo is getting empty
+--				usb_ready <= '1';													-- ready = 1
+--				usb_burst := USB_BURST_WORDS;									-- burst = 4096
+--			elsif usb_ready = '1' then											-- else if ready = 1
+--				 usb_burst := usb_burst - 1;									-- burst - 1
+--				 if usb_burst = 0 or fifo_w_en_end = '1' then			-- if burst = 0 or end = 1
+--					  usb_ready <= '0';											-- ready = 0
+--				 end if;
+--			end if;
+--		end if;
+--	end process control_usb_ready;
+	
+	
+	
+	
 --------------------------------------------------------------------------------------------------------------------
---Control USB.
+--Control USB. version 2
 --------------------------------------------------------------------------------------------------------------------
 	--Control USB: TODO: que no se bloquee al intentar llenarse de datos
 	control_usb_ready : process(clk, rst_n) is
-		variable usb_burst : integer;
+	variable usb_burst : integer;
 	begin
 		if rst_n = '0' then --RESET
 			usb_ready <= '0';
@@ -268,23 +323,28 @@ begin
 			fifo_w_en_latched <= '0';
 			
 		elsif rising_edge(clk) then --NORMAL
-			 fifo_w_en_latched <= fifo_w_en;									-- latched = enable	
-			if fifo_w_en_latched = '1' and fifo_w_en = '0' then		-- if latched = 1 and enable = 0
-				  fifo_w_en_end <= '1';											-- end = 1
-			else																		-- else
-				  fifo_w_en_end <= '0';											-- end = 0
+			fifo_w_en_latched <= fifo_w_en;													
+			
+			if fifo_w_en_latched = '1' and fifo_w_en = '0' then		
+			fifo_w_en_end <= '1';											
+			else																	
+				  fifo_w_en_end <= '0';											
 			end if;		
-			if fifo_almost_empty = '1' or fifo_empty = '1' then 		-- if fifo is getting empty
-				usb_ready <= '1';													-- ready = 1
-				usb_burst := USB_BURST_WORDS;									-- burst = 4096
-			elsif usb_ready = '1' then											-- else if ready = 1
-				 usb_burst := usb_burst - 1;									-- burst - 1
-				 if usb_burst = 0 or fifo_w_en_end = '1' then			-- if burst = 0 or end = 1
-					  usb_ready <= '0';											-- ready = 0
+			
+			if fifo_fill_count < OSU_FIFO_DEPTH - FIFO_ALM_FULL_OFFSET then	
+				usb_ready <= '1';	
+				usb_burst := USB_BURST_WORDS;				
+			elsif usb_ready = '1' then	
+				usb_burst := usb_burst - 1;
+				 if usb_burst = 0 or fifo_w_en_end = '1' then				
+					  usb_ready <= '0';												
 				 end if;
 			end if;
+			
 		end if;
 	end process control_usb_ready;
+	
+	
 	
 end Behavioral;
 

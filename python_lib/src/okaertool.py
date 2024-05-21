@@ -18,6 +18,7 @@
 ##    along with pyNAVIS.  If not, see <http://www.gnu.org/licenses/>.         ##
 ##                                                                             ##
 #################################################################################
+import time
 
 import ok.ok as ok
 import logging as log
@@ -26,7 +27,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import sys
-import io
 
 class Spikes:
     """
@@ -52,7 +52,7 @@ class Okaertool:
         bit_file (string): Path to the FPGA .bit programming file
     """
     OUTPIPE_ENDPOINT = 0xA0
-    INPIPE_ENDPOINT = 0x93
+    INPIPE_ENDPOINT = 0x80
     INWIRE_COMMAND_ENDPOINT = 0x00
     INWIRE_SELINPUT_ENDPOINT = 0x01
     NUM_INPUTS = 3
@@ -114,7 +114,6 @@ class Okaertool:
         :param command: List of commands. Possible values: 'idle' 'monitor' 'bypass' 'monitor_bypass' 'sequencer'
         :return:
         """
-
         command_endpoint_value = 0x00000000
         if len(command) != 0:
             if 'idle' in command:
@@ -123,17 +122,19 @@ class Okaertool:
                 command_endpoint_value += 1  # Set 1 in the bit number 0
             if 'bypass' in command:
                 command_endpoint_value += 2  # Set 1 in the bit number 1
-            if 'monitor_bypass' in command:
+            if 'merge' in command:
                 command_endpoint_value += 3  # Set 1 in the bit number 0 and 1
             if 'sequencer' in command:
                 command_endpoint_value += 4  # Set 1 in the bit number 2
+            if 'debug' in command:
+                command_endpoint_value += 5  # Set 1 in the bit number 2
 
         print('Valor command:', command_endpoint_value)
 
         self.device.SetWireInValue(self.INWIRE_COMMAND_ENDPOINT, command_endpoint_value)
         self.device.UpdateWireIns()
 
-    def monitor(self, buffer_length, events):
+    def monitor(self, buffer_length, events, file):
         """
         Get the information captured by the tool (ECU) and save it in different spikes structs depending on the selected
         inputs. First, the events/spikes are collected in the IMU, next are captured in the ECU and finally, events
@@ -151,16 +152,10 @@ class Okaertool:
         buffer = bytearray(buffer_length)
         buffer = np.array(buffer, dtype=np.uint8)
         num_read_bytes = self.device.ReadFromBlockPipeOut(self.OUTPIPE_ENDPOINT, self.USB_BLOCK_SIZE, buffer)
-        # Int type buffer
-        buffer_list = list(buffer)
-        # Buffer binary file
-        # np.save(r"C:\Users\PabloSQ_2023\PycharmProjects\Okaertool_local\okaertool-master\okaertool-master\python_lib\src", buffer)
-        # Buffer text file
-
-        # np.savetxt('buffer_text', buffer, fmt='%x')
+        print('num_read_bytes: ', num_read_bytes)
 
         # Open file in binary write mode
-        binary_file = open("my_file.txt", "wb")
+        binary_file = open(file, "wb")
 
         # Write bytes to file
         binary_file.write(buffer)
@@ -168,14 +163,14 @@ class Okaertool:
 
         # Numpy Matrix with the 8 bytes of AER protocol
         Matrix_Runner_z = 0
-        n_filas = int(((num_read_bytes)/8))
+        n_filas = int((buffer_length)/8)
         n_columnas = 8  # Number of bytes of AER protocol: 4 for timestamp (ts) and 4 for address (addr)
         np_matrix = np.zeros(shape=(n_filas, n_columnas))
         for Matrix_Runner_x in range(n_filas):
                 for Matrix_Runner_y in range(7, -1, -1):
                     np_matrix[Matrix_Runner_x][Matrix_Runner_y] = buffer[Matrix_Runner_z]
                     Matrix_Runner_z += 1
-
+        print(np_matrix)
         # Counter used for counting goods events and debugging
         q = 1
         # Empty lists of address and timestamp datas
@@ -186,11 +181,11 @@ class Okaertool:
             # Example of this range(0, num_read_bytes, 8) with spikes = 1 Mb and by USB_BLOCK_SIZE = 1024 bytes -->
             # Number of iterations: (1048568 / 8) + 1 = 131072
             try:
-                print('-------------Índice b_indx-------------', b_idx)
+                #print('-------------Índice b_indx-------------', b_idx)
                 ts = int.from_bytes(buffer[b_idx:b_idx+3], byteorder='little', signed=False)
-                print('Timestamp ts', ts)
+                #print('Timestamp ts', ts)
                 addr = int.from_bytes(buffer[b_idx+4:b_idx+7], byteorder='little', signed=False)
-                print('addr', addr)
+                #print('addr', addr)
 
                 if (ts == 0 and addr == 0) or ts == 4294967295:  # Null value. Used to fill de USB packet and 4294967295 = /xff/xff/xff/xff
                     continue
@@ -200,17 +195,17 @@ class Okaertool:
                 ts_histogram.append(ts)
                 addr_histogram.append(addr)
                 q += 1
-                print('Iteración con timestamp distinto de 4294967295 y dirección distinta de 0. Número =', q)
+                #print('Iteración con timestamp distinto de 4294967295 y dirección distinta de 0. Número =', q)
                 # Increase the global timestamp using the differential timestamp received
                 self.global_timestamp += ts
-                print('global_timestamp', self.global_timestamp)
+                #print('global_timestamp', self.global_timestamp)
                 # Get the input index that is encoded in the 3 most significant bits.
                 input_idx = (addr & 0xE000_0000) >> 29
                 # Save the global timestamp and the address in the spike list corresponding with the input
                 spikes[input_idx].timestamps.append(self.global_timestamp)
-                print('Timestamp añadido a', spikes[input_idx])
+                #print('Timestamp añadido a', spikes[input_idx])
                 spikes[input_idx].addresses.append(addr)
-                print('Dirección añadida a', spikes[input_idx])
+                #print('Dirección añadida a', spikes[input_idx])
                 # Condition to take the number of events selected
                 if q <= events:
                     pass
@@ -323,30 +318,129 @@ class Okaertool:
 
         return spikes  # spikes
 
-    def bypass(self):
+    def bypass(self, inputs=[]):
         """
-        AER data is bypassed from IMU directly into OSU. This command can be used alongside "monitor".
-        """
-        # Enable Merge (or Passthrough) function
-        self.select_command('bypass')
-
-    def sequencer(self, buffer_length, file):
-        """
-        First, the events/spikes are sent from PC to CU by USB and next are sent to the OSU to obtain them through the
-        AER output.
-
-        :param file: txt file containing AER data in TS/ADDR format for the OSU to sequence
+        MODE BYPASS: AER data is bypassed from IMU directly into OSU. This command can be used alongside "monitor".
+        :param inputs: string that contains input port to bypass. Possible values: 'Port_A' 'Port_B' 'Node_out'
         :return:
         """
-        #file = "my_file.txt"
+        print('--------------------------')
+        print('Bypassing data over', inputs)
+        self.select_inputs(inputs=inputs)
+        self.select_command('bypass')
+        print('--------------------------')
 
-        buf = bytearray(buffer_length*1024)  # Create a buffer of 1024 bytes
-        buf = np.array(buf, dtype=np.uint8)
-        with io.open(file, "rb") as fp:
-            size = fp.readinto(buf)  # Read binary data into the buffer
+    def sequencer(self, file):
+        """
+        MODE SEQUENCER: A file is selected to be sequenced over NODE_IN output in a lone transfer.
+        :param file: numpy or txt file that contains binary data for sequencer
+        :return:
+        """
+        print('--------------------------')
+        print('Sequencing data')
 
-
+        # Read the binary file into a numpy array
+        with open(file, 'rb') as binfile:
+            buffer = np.frombuffer(binfile.read(), dtype=np.uint8)
+            buffer = np.array(buffer, dtype=np.uint8)
         self.select_command('sequencer')
+        num_sent_bytes = self.device.WriteToBlockPipeIn(self.INPIPE_ENDPOINT, self.USB_BLOCK_SIZE, buffer)
+        print('Number of sent bytes: ', num_sent_bytes)
+        print('--------------------------')
 
-        self.device.WriteToBlockPipeIn(self.INPIPE_ENDPOINT, self.USB_BLOCK_SIZE, buf)
+    def debug_file(self, file, buffer_length):
+        """
+        MODE DEBUG_FILE: A file is selected to be sequenced over NODE_IN output. NODE_IN is connected to NODE_OUT
+            and commands SEQUENCER and MONITOR are sent simultaneously to debug both features at the same time.
 
+        :param file: txt file containing AER data in TS/ADDR format for the OSU to sequence
+        :param buffer_length: Length of data buffer that will be sent over USB
+        :return:
+        """
+
+        print('--------------------------')
+        print('Sequencing data')
+
+        # Read the binary file into a numpy array
+        with open(file, 'rb') as binfile:
+            buffer = np.frombuffer(binfile.read(), dtype=np.uint8)
+            buffer = np.array(buffer, dtype=np.uint8)
+
+
+        num_transfers = len(buffer)/(buffer_length)
+        print('Bytes to transfer: ', len(buffer))
+        print('number of transfers: ',int(num_transfers))
+
+        buffer_seq = bytearray(buffer_length)
+        buffer_seq = np.array(buffer_seq, dtype=np.uint8)
+
+        buffer_mon = bytearray(buffer_length)
+        #buffer_mon = np.array(buffer_mon, dtype=np.uint8)
+
+        buffer_seq_extended = bytearray()
+        num_read_bytes_extended = 0
+        num_sent_bytes_extended = 0
+
+
+        self.select_command('debug')
+
+        for i in range(int(num_transfers)):
+            buffer_mon = buffer[i * buffer_length:(i + 1) * buffer_length]
+            num_sent_bytes = self.device.WriteToBlockPipeIn(self.INPIPE_ENDPOINT, self.USB_BLOCK_SIZE, buffer_mon)
+            num_read_bytes = self.device.ReadFromBlockPipeOut(self.OUTPIPE_ENDPOINT, self.USB_BLOCK_SIZE, buffer_seq)
+            buffer_seq_extended.extend(buffer_seq)
+            num_read_bytes_extended = num_read_bytes_extended + num_read_bytes
+            num_sent_bytes_extended = num_sent_bytes_extended + num_sent_bytes
+            print('num_sent_bytes: ', num_sent_bytes_extended)
+            print('num_read_bytes: ', num_read_bytes_extended)
+
+        #print(buffer_seq_extended)
+        binary_file = open(r"C:\Users\PabloSQ_2023\PycharmProjects\Okaertool_local\okaertool-master\okaertool-master\my_file_sequenced_B","wb")
+        binary_file.write(buffer_seq_extended)
+
+        print('Sequenced data has been saved into "my_file_sequenced_B"')
+        print('--------------------------')
+
+    def debug(self,buffer_length,num_transfers):
+        """
+        MODE DEBUG: Artificial events are generated and sent over NODE_IN. NODE_IN is connected to NODE_OUT
+            and commands SEQUENCER and MONITOR are sent simultaneously to debug both features at the same time.
+
+        :param num_transfers: Number of repetitions
+        :param buffer_length: Length of data buffer that will be sent over USB
+        :return:
+        """
+        print('--------------------------')
+        print('Sequencing data')
+        sequence = bytearray([0x20, 0x00, 0x00, 0x00, 0x43, 0x24, 0x00, 0x00])  # The fixed part of the sequence
+        buffer = bytearray()
+
+        buffer_seq = bytearray(buffer_length)
+        buffer_seq = np.array(buffer_seq, dtype=np.uint8)
+
+        buffer_seq_extended = bytearray()
+        num_read_bytes_extended = 0
+        num_sent_bytes_extended = 0
+
+
+        for _ in range(int(buffer_length/8)):
+            buffer.extend(sequence)
+
+        self.select_command('debug')
+
+        for i in range(num_transfers):
+            num_sent_bytes = self.device.WriteToBlockPipeIn(self.INPIPE_ENDPOINT, self.USB_BLOCK_SIZE, buffer)
+            num_read_bytes = self.device.ReadFromBlockPipeOut(self.OUTPIPE_ENDPOINT, self.USB_BLOCK_SIZE, buffer_seq)
+            print('Read bytes: ', num_read_bytes)
+            print('Sent bytes: ', num_sent_bytes)
+            buffer_seq_extended.extend(buffer_seq)
+            num_read_bytes_extended = num_read_bytes_extended + num_read_bytes
+            num_sent_bytes_extended = num_sent_bytes_extended + num_sent_bytes
+
+        print('Total read bytes: ', num_read_bytes_extended)
+        print('Total sent bytes: ', num_sent_bytes_extended)
+        #print(buffer_seq_extended, len(buffer_seq_extended))
+        binary_file = open(r"C:\Users\PabloSQ_2023\PycharmProjects\Okaertool_local\okaertool-master\okaertool-master\my_file_sequenced_B","wb")
+        binary_file.write(buffer_seq_extended)
+        print('Sequenced data has been saved into "my_file_sequenced_B"')
+        print('--------------------------')

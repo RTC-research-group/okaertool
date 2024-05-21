@@ -156,7 +156,7 @@ begin
 		port map(
 			clk       => okClk,
 			rst_n     => rst_n,
-			req_n     => imu_req_n,
+			ecu_req_n     => imu_req_n,
 			aer_data  => imu_aer_data,
 			ecu_out_ack_n     => ecu_osu_ack_n,
 			out_data  => in_ecu_data,

@@ -4,13 +4,14 @@ use ieee.STD_LOGIC_1164.all;
 use ieee.std_logic_unsigned.all;        -- @suppress "Deprecated package"
 use ieee.numeric_std.all;
 use work.okt_ecu_pkg.all;
+use work.okt_fifo_pkg.all;
 use work.okt_global_pkg.all;
 
 entity okt_ecu is                       -- Event Capture Unit
 	Port(
 		clk       : in  std_logic;
 		rst_n     : in  std_logic;
-		req_n     : in  std_logic;
+		ecu_req_n     : in  std_logic;
 		aer_data  : in  std_logic_vector(BUFFER_BITS_WIDTH - 1 downto 0);
 		ecu_out_ack_n     : out std_logic;
 		
@@ -31,6 +32,7 @@ architecture Behavioral of okt_ecu is
 	signal r_okt_ecu_control_state, n_okt_ecu_control_state : state;
 
 	signal r_timestamp, n_timestamp : std_logic_vector(TIMESTAMP_BITS_WIDTH - 1 downto 0);
+	--signal ecu_req_n                : std_logic;
 	signal n_ack_n                  : std_logic;
 
 	signal ECU_fifo_w_data 		  : std_logic_vector(BUFFER_BITS_WIDTH - 1 downto 0);
@@ -41,6 +43,8 @@ architecture Behavioral of okt_ecu is
 	signal ECU_fifo_full  		  : std_logic;
 	signal ECU_fifo_almost_full   : std_logic;
 	signal ECU_fifo_almost_empty   : std_logic;
+	signal ECU_fifo_fill_count 	: integer range FIFO_DEPTH - 1 downto 0;
+	--signal usb_burst : integer;
 	
 	signal ECU_usb_ready 			  : std_logic;
 	signal ECU_fifo_r_en_end 	  : std_logic; 
@@ -54,25 +58,45 @@ architecture Behavioral of okt_ecu is
 
 begin
 
+	--ecu_req_n <= req_n;
 	ecu_out_ack_n <= n_ack_n;
 	status <= "00000" & ECU_usb_ready & ECU_fifo_empty & ECU_fifo_full;
 	n_command <= cmd;
 
-	caputre_fifo : entity work.okt_fifo
+--	caputre_fifo : entity work.okt_fifo
+--		generic map(
+--			DEPTH => FIFO_DEPTH
+--		)
+--		port map(
+--			clk    => clk,
+--			rst_n  => rst_n,
+--			w_data => ECU_fifo_w_data,
+--			w_en   => ECU_fifo_w_en,
+--			r_data => ECU_fifo_r_data,
+--			r_en   => ECU_fifo_r_en,
+--			empty  => ECU_fifo_empty,
+--			full   => ECU_fifo_full,
+--			almost_full => ECU_fifo_almost_full,
+--			almost_empty => ECU_fifo_almost_empty
+--		);
+		
+	ring_buffer : entity work.ring_buffer
 		generic map(
-			DEPTH => FIFO_DEPTH
+			RAM_DEPTH => FIFO_DEPTH,
+			RAM_WIDTH => 32
 		)
 		port map(
 			clk    => clk,
-			rst_n  => rst_n,
-			w_data => ECU_fifo_w_data,
-			w_en   => ECU_fifo_w_en,
-			r_data => ECU_fifo_r_data,
-			r_en   => ECU_fifo_r_en,
+			rst  => rst_n,
+			wr_data => ECU_fifo_w_data,
+			wr_en   => ECU_fifo_w_en,
+			rd_data => ECU_fifo_r_data,
+			rd_en   => ECU_fifo_r_en,
 			empty  => ECU_fifo_empty,
 			full   => ECU_fifo_full,
-			almost_full => ECU_fifo_almost_full,
-			almost_empty => ECU_fifo_almost_empty
+			full_next => ECU_fifo_almost_full,
+			fill_count => ECU_fifo_fill_count,
+			empty_next => ECU_fifo_almost_empty
 		);
 
 	out_data  <= ECU_fifo_r_data;
@@ -93,7 +117,7 @@ begin
 	end process signals_update;
 
 	-- input monitor: Stores data in fifo
-	input_monitor: process(r_okt_ecu_control_state, req_n, r_timestamp, aer_data, ECU_fifo_full, n_command)
+	input_monitor: process(r_okt_ecu_control_state, ecu_req_n, r_timestamp, aer_data, ECU_fifo_full, n_command)
 	begin
 		n_okt_ecu_control_state <= r_okt_ecu_control_state;
 		n_timestamp             <= r_timestamp + 1;
@@ -103,10 +127,10 @@ begin
 
 		case r_okt_ecu_control_state is
 			when idle =>
-				if (req_n = '0' and n_command(0) = '1' ) then
+				if (ecu_req_n = '0' and n_command(0) = '1' ) then
 					n_okt_ecu_control_state <= req_fall_0;
 
-				elsif (r_timestamp = TIMESTAMP_OVF) then
+				elsif (r_timestamp = TIMESTAMP_OVF and n_command(0) = '1' ) then
 					n_okt_ecu_control_state <= timestamp_overflow_0;
 				end if;
 
@@ -125,14 +149,14 @@ begin
 				if (ECU_fifo_full= '0') then
 					ECU_fifo_w_data(BUFFER_BITS_WIDTH - 1 downto 0) <= aer_data;
 					ECU_fifo_w_en                                   <= '1';
-					n_timestamp                                 <= (others => '0');
-					n_ack_n                                     <= '0';
+					--n_timestamp                                 <= (others => '0');
+					--n_ack_n                                     <= '0';
 					n_okt_ecu_control_state                     <= wait_req_rise;
 				end if;
 
 			when wait_req_rise =>
 				n_ack_n <= '0';
-				if (req_n = '1') then
+				if (ecu_req_n = '1') then
 					n_okt_ecu_control_state <= idle;
 				end if;
 
@@ -164,13 +188,15 @@ begin
 			ECU_fifo_r_en_latched <= '0';
 			
 		elsif rising_edge(clk) then
-		    ECU_fifo_r_en_latched <= ECU_fifo_r_en;
-		    if ECU_fifo_r_en_latched = '1' and ECU_fifo_r_en = '0' then
-		        ECU_fifo_r_en_end <= '1';
-		    else
-		        ECU_fifo_r_en_end <= '0';
-		    end if;
-			if ECU_fifo_almost_full = '1' or ECU_fifo_full= '1' then
+		   ECU_fifo_r_en_latched <= ECU_fifo_r_en;
+		    
+			if ECU_fifo_r_en_latched = '1' and ECU_fifo_r_en = '0' then
+				ECU_fifo_r_en_end <= '1';
+		   else
+		      ECU_fifo_r_en_end <= '0';
+		   end if;
+			
+			if ECU_fifo_fill_count > FIFO_ALM_EMPTY_OFFSET then
 				ECU_usb_ready <= '1';
 				usb_burst := USB_BURST_WORDS;
 			elsif ECU_usb_ready = '1' then

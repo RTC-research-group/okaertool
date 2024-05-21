@@ -73,9 +73,12 @@ architecture simulate of okt_top_tb is
 	signal node_data    : std_logic_vector(NODE_DATA_BITS_WIDTH - 1 downto 0);
 	signal node_req_n   : std_logic;
 	signal node_ack_n   : std_logic;
+	
+	-- Output signals
 	signal out_data     : std_logic_vector(NODE_IN_DATA_BITS_WIDTH - 1 downto 0); -- @suppress "signal out_data is never read"
 	signal out_req_n    : std_logic;
 	signal out_ack_n    : std_logic;
+	
 	signal cuenta			: std_logic_vector(7 downto 0);
 
 	type state is (idle, req_fall, req_rise);
@@ -124,6 +127,10 @@ begin
 	hi_datain        <= okUHU;
 	hi_busy          <= okHU(0);
 	okUHU            <= hi_dataout when (hi_drive = '1') else (others => 'Z');
+	
+	rome_a_data <= out_data(ROME_DATA_BITS_WIDTH -1 downto 0);
+	rome_a_req_n <= out_req_n;
+	out_ack_n <= rome_a_ack_n;
 	---------------------------------------------------------------------------------------------
 
 	-- Clock Generation
@@ -824,8 +831,8 @@ begin
         j := 0;
         while j < pipeInSize loop
 		  
-			pipeIn(j+0)     := x"22";
-			pipeIn(j+1)     := x"22";
+			pipeIn(j+0)     := x"05";
+			pipeIn(j+1)     := x"00";
 			pipeIn(j+2)     := x"00";
 			pipeIn(j+3)     := x"00";
 			pipeIn(j+4)     := x"2F";
@@ -864,9 +871,11 @@ end procedure write_USB_data;
 		select_command(x"0000_0000"); 
 		select_input(x"0000_0000");
 		wait for 10 ns;
-		--select_input(x"0000_0004");
+		select_input(x"0000_0001");
+		--write_USB_data(1);
 		select_command(x"0000_0004"); 
-		write_USB_data(10);
+		write_USB_data(65);
+		--read_USB_data(1024*8);
 		wait for 100 ns;
 		--read_USB_data(1);
 		--select_command(x"0000_0005"); 
@@ -913,11 +922,11 @@ end procedure write_USB_data;
 		next_state_rome_b <= current_state_rome_b;
 		next_state_node   <= current_state_node;
 
-		rome_a_req_n <= '1';
+		--rome_a_req_n <= '1';
 		rome_b_req_n <= '1';
 		node_req_n   <= '1';
 
-		rome_a_data <= (others => '0');
+		--rome_a_data <= (others => '0');
 		rome_b_data <= (others => '0');
 		node_data   <= (others => '0');
 
@@ -928,14 +937,14 @@ end procedure write_USB_data;
 				end if;
 
 			when req_fall =>
-				rome_a_req_n <= '0';
-				rome_a_data  <= std_logic_vector(to_unsigned(1, rome_a_data'length));
+				--rome_a_req_n <= '0';
+				--rome_a_data  <= std_logic_vector(to_unsigned(1, rome_a_data'length));
 				if rome_a_ack_n = '0' then
 					next_state_rome_a <= req_rise;
 				end if;
 
 			when req_rise =>
-				rome_a_req_n      <= '1';
+				--rome_a_req_n      <= '1';
 				next_state_rome_a <= idle;
 
 		end case;
@@ -979,34 +988,34 @@ end procedure write_USB_data;
 		end case;
 	end process;
 
-	OUT_FSM_transitions : process(current_state_out, out_req_n)
-	begin
-		next_state_out <= current_state_out;
-		out_ack_n      <= '1';
-
-		case current_state_out is
-			when idle =>
-				if (out_req_n = '0') then
-					next_state_out <= req_fall;
-				end if;
-				
-			when delay1 =>
-				next_state_out <= delay2;
-			
-
-			when req_fall =>
-				out_ack_n <= '0';
-				next_state_out <= delay2;
-
-			
-			when delay2 =>
-			out_ack_n <= '0';
-			if (out_req_n = '1') then
-				next_state_out <= idle;
-				end if;
-
-		end case;
-	end process;
+--	OUT_FSM_transitions : process(current_state_out, out_req_n)
+--	begin
+--		next_state_out <= current_state_out;
+--		out_ack_n      <= '1';
+--
+--		case current_state_out is
+--			when idle =>
+--				if (out_req_n = '0') then
+--					next_state_out <= req_fall;
+--				end if;
+--				
+--			when delay1 =>
+--				next_state_out <= delay2;
+--			
+--
+--			when req_fall =>
+--				out_ack_n <= '0';
+--				next_state_out <= delay2;
+--
+--			
+--			when delay2 =>
+--			out_ack_n <= '0';
+--			if (out_req_n = '1') then
+--				next_state_out <= idle;
+--				end if;
+--
+--		end case;
+--	end process;
 	
 	
 end simulate;
