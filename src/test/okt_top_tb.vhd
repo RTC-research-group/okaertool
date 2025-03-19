@@ -128,9 +128,9 @@ begin
 	hi_busy          <= okHU(0);
 	okUHU            <= hi_dataout when (hi_drive = '1') else (others => 'Z');
 	
-	rome_a_data <= out_data(ROME_DATA_BITS_WIDTH -1 downto 0);
-	rome_a_req_n <= out_req_n;
-	out_ack_n <= rome_a_ack_n;
+--	rome_a_data <= out_data(ROME_DATA_BITS_WIDTH -1 downto 0);
+--	rome_a_req_n <= out_req_n;
+--	out_ack_n <= rome_a_ack_n;
 	---------------------------------------------------------------------------------------------
 
 	-- Clock Generation
@@ -871,12 +871,12 @@ end procedure write_USB_data;
 		select_command(x"0000_0000"); 
 		select_input(x"0000_0000");
 		wait for 10 ns;
-		select_input(x"0000_0001");
+		--select_input(x"0000_0001");
 		--write_USB_data(1);
-		select_command(x"0000_0004"); 
-		write_USB_data(65);
+		--select_command(x"0000_0004"); 
+		--write_USB_data(65);
 		--read_USB_data(1024*8);
-		wait for 100 ns;
+		--wait for 100 ns;
 		--read_USB_data(1);
 		--select_command(x"0000_0005"); 
 		--wait for 100 ns;
@@ -889,12 +889,12 @@ end procedure write_USB_data;
 		--read_USB_data(10);
 		--wait for 100 ns;
 		
-		-- Select input 1, 2 and 3
-		--select_command(x"0000_0003");
-		--select_input(x"0000_0004");
-		--wait for 10 ns;
+		-- Select input 3
+		select_input(x"0000_0007");
+		select_command(x"0000_0001");
+		wait for 10 ns;
 		-- Check data
-		--read_USB_data(1024);
+		read_USB_data(16);
 
 		wait;
 	end process sim_process;
@@ -922,11 +922,11 @@ end procedure write_USB_data;
 		next_state_rome_b <= current_state_rome_b;
 		next_state_node   <= current_state_node;
 
-		--rome_a_req_n <= '1';
+		rome_a_req_n <= '1';
 		rome_b_req_n <= '1';
 		node_req_n   <= '1';
 
-		--rome_a_data <= (others => '0');
+		rome_a_data <= (others => '0');
 		rome_b_data <= (others => '0');
 		node_data   <= (others => '0');
 
@@ -937,14 +937,14 @@ end procedure write_USB_data;
 				end if;
 
 			when req_fall =>
-				--rome_a_req_n <= '0';
-				--rome_a_data  <= std_logic_vector(to_unsigned(1, rome_a_data'length));
+				rome_a_req_n <= '0';
+				rome_a_data  <= std_logic_vector(to_unsigned(1, rome_a_data'length));
 				if rome_a_ack_n = '0' then
 					next_state_rome_a <= req_rise;
 				end if;
 
 			when req_rise =>
-				--rome_a_req_n      <= '1';
+				rome_a_req_n      <= '1';
 				next_state_rome_a <= idle;
 
 		end case;
