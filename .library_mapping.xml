@@ -5,6 +5,7 @@
   <Mappings Location="AER_emitter" Library="not mapped"/>
   <Mappings Location="Common Libraries" Library="not mapped"/>
   <Mappings Location="FrontPanel-Ubuntu18.04LTS-x64-5.2.3" Library="not mapped"/>
+  <Mappings Location="FrontPanel-Ubuntu20.04LTS-x64-5.3.6" Library="not mapped"/>
   <Mappings Location="ise" Library="not mapped"/>
   <Mappings Location="python_lib" Library="not mapped"/>
   <Mappings Location="src/constraints" Library="not mapped"/>
