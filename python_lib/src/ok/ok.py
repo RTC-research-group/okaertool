@@ -255,7 +255,7 @@ class okStrings(object):
 _ok.okStrings_swigregister(okStrings)
 
 
-__version__ = "5.2.3"
+__version__ =  	"5.3.6"
 
 okFPGACONFIGURATIONMETHOD_NVRAM = _ok.okFPGACONFIGURATIONMETHOD_NVRAM
 okFPGACONFIGURATIONMETHOD_JTAG = _ok.okFPGACONFIGURATIONMETHOD_JTAG
@@ -652,6 +652,12 @@ OK_PRODUCT_XEM8350KU115 = _ok.OK_PRODUCT_XEM8350KU115
 OK_PRODUCT_XEM8350SECONDARY = _ok.OK_PRODUCT_XEM8350SECONDARY
 OK_PRODUCT_XEM7310MTA75 = _ok.OK_PRODUCT_XEM7310MTA75
 OK_PRODUCT_XEM7310MTA200 = _ok.OK_PRODUCT_XEM7310MTA200
+OK_PRODUCT_XEM9025 = _ok.OK_PRODUCT_XEM9025
+OK_PRODUCT_XEM8320AU25P = _ok.OK_PRODUCT_XEM8320AU25P
+OK_PRODUCT_XEM8310AU25P = _ok.OK_PRODUCT_XEM8310AU25P
+OK_PRODUCT_FPX9301 = _ok.OK_PRODUCT_FPX9301
+OK_PRODUCT_XEM8370KU11P = _ok.OK_PRODUCT_XEM8370KU11P
+OK_PRODUCT_XEM8305AU15P = _ok.OK_PRODUCT_XEM8305AU15P
 OK_PRODUCT_OEM_START = _ok.OK_PRODUCT_OEM_START
 okPRODUCT_UNKNOWN = _ok.okPRODUCT_UNKNOWN
 okPRODUCT_XEM3001V1 = _ok.okPRODUCT_XEM3001V1
@@ -708,6 +714,12 @@ okPRODUCT_XEM8350KU115 = _ok.okPRODUCT_XEM8350KU115
 okPRODUCT_XEM8350SECONDARY = _ok.okPRODUCT_XEM8350SECONDARY
 okPRODUCT_XEM7310MTA75 = _ok.okPRODUCT_XEM7310MTA75
 okPRODUCT_XEM7310MTA200 = _ok.okPRODUCT_XEM7310MTA200
+okPRODUCT_XEM9025 = _ok.okPRODUCT_XEM9025
+okPRODUCT_XEM8320AU25P = _ok.okPRODUCT_XEM8320AU25P
+okPRODUCT_XEM8310AU25P = _ok.okPRODUCT_XEM8310AU25P
+okPRODUCT_FPX9301 = _ok.okPRODUCT_FPX9301
+okPRODUCT_XEM8370KU11P = _ok.okPRODUCT_XEM8370KU11P
+okPRODUCT_XEM8305AU15P = _ok.okPRODUCT_XEM8305AU15P
 okPRODUCT_OEM_START = _ok.okPRODUCT_OEM_START
 OK_FPGACONFIGURATIONMETHOD_NVRAM = _ok.OK_FPGACONFIGURATIONMETHOD_NVRAM
 OK_FPGACONFIGURATIONMETHOD_JTAG = _ok.OK_FPGACONFIGURATIONMETHOD_JTAG
@@ -810,6 +822,7 @@ class okTDeviceInfo(object):
     interfaceCount = property(_ok.okTDeviceInfo_interfaceCount_get, _ok.okTDeviceInfo_interfaceCount_set)
     interfaceIndex = property(_ok.okTDeviceInfo_interfaceIndex_get, _ok.okTDeviceInfo_interfaceIndex_set)
     configuresFromSystemFlash = property(_ok.okTDeviceInfo_configuresFromSystemFlash_get, _ok.okTDeviceInfo_configuresFromSystemFlash_set)
+    hasQuadConfigFlash = property(_ok.okTDeviceInfo_hasQuadConfigFlash_get, _ok.okTDeviceInfo_hasQuadConfigFlash_set)
 
     def __init__(self):
         _ok.okTDeviceInfo_swiginit(self, _ok.new_okTDeviceInfo())
@@ -1062,6 +1075,12 @@ class okCFrontPanel(object):
     brdXEM8350SECONDARY = _ok.okCFrontPanel_brdXEM8350SECONDARY
     brdXEM7310MTA75 = _ok.okCFrontPanel_brdXEM7310MTA75
     brdXEM7310MTA200 = _ok.okCFrontPanel_brdXEM7310MTA200
+    brdXEM9025 = _ok.okCFrontPanel_brdXEM9025
+    brdXEM8320AU25P = _ok.okCFrontPanel_brdXEM8320AU25P
+    brdXEM8310AU25P = _ok.okCFrontPanel_brdXEM8310AU25P
+    brdFPX9301 = _ok.okCFrontPanel_brdFPX9301
+    brdXEM8370KU11P = _ok.okCFrontPanel_brdXEM8370KU11P
+    brdXEM8305AU15P = _ok.okCFrontPanel_brdXEM8305AU15P
     NoError = _ok.okCFrontPanel_NoError
     Failed = _ok.okCFrontPanel_Failed
     Timeout = _ok.okCFrontPanel_Timeout
@@ -1091,6 +1110,13 @@ class okCFrontPanel(object):
     @staticmethod
     def GetErrorString(errorCode: 'int') -> "std::string":
         return _ok.okCFrontPanel_GetErrorString(errorCode)
+
+    @staticmethod
+    def GetErrorMessage(ec: 'OpalKellyLegacy::okCFrontPanel::ErrorCode') -> "char const *":
+        return _ok.okCFrontPanel_GetErrorMessage(ec)
+
+    def GetLastError(self) -> "OpalKellyLegacy::okCFrontPanel::ErrorCode":
+        return _ok.okCFrontPanel_GetLastError(self)
 
     def GetLastErrorMessage(self) -> "char const *":
         return _ok.okCFrontPanel_GetLastErrorMessage(self)
@@ -1188,6 +1214,9 @@ class okCFrontPanel(object):
 
     def Close(self) -> "void":
         return _ok.okCFrontPanel_Close(self)
+
+    def ClearFPGAConfiguration(self) -> "OpalKellyLegacy::okCFrontPanel::ErrorCode":
+        return _ok.okCFrontPanel_ClearFPGAConfiguration(self)
 
     def ConfigureFPGA(self, strFilename: 'std::string const &') -> "OpalKellyLegacy::okCFrontPanel::ErrorCode":
         return _ok.okCFrontPanel_ConfigureFPGA(self, strFilename)
@@ -1323,7 +1352,7 @@ class okCFrontPanel(object):
     def GetDeviceSensors(self) -> "std::vector< okTDeviceSensor,std::allocator< okTDeviceSensor > >":
         return _ok.okCFrontPanel_GetDeviceSensors(self)
 
-    def CreateLuaScriptEngine(self) -> "okstd::auto_ptr< OpalKelly::ScriptEngine >":
+    def CreateLuaScriptEngine(self) -> "std::unique_ptr< OpalKelly::ScriptEngine >":
         return _ok.okCFrontPanel_CreateLuaScriptEngine(self)
 
 # Register okCFrontPanel in _ok:
@@ -1331,6 +1360,9 @@ _ok.okCFrontPanel_swigregister(okCFrontPanel)
 
 def okCFrontPanel_GetErrorString(errorCode: 'int') -> "std::string":
     return _ok.okCFrontPanel_GetErrorString(errorCode)
+
+def okCFrontPanel_GetErrorMessage(ec: 'OpalKellyLegacy::okCFrontPanel::ErrorCode') -> "char const *":
+    return _ok.okCFrontPanel_GetErrorMessage(ec)
 
 def okCFrontPanel_AddCustomDevice(matchInfo: 'okTDeviceMatchInfo', devInfo: 'okTDeviceInfo'=None) -> "OpalKellyLegacy::okCFrontPanel::ErrorCode":
     return _ok.okCFrontPanel_AddCustomDevice(matchInfo, devInfo)
