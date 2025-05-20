@@ -25,7 +25,7 @@ begin
     okt_sno : entity work.okt_sno_top
         port map(
             clock        => clk,
-            rst_ext      => rst_n,
+            rst_n      => rst_n,
             AER_DATA_OUT => node_data,
             AER_REQ      => node_req_n,
             AER_ACK      => node_ack_n

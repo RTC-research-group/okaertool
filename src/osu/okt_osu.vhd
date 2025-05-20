@@ -21,9 +21,8 @@ library ieee;
 use ieee.STD_LOGIC_1164.all;
 use ieee.std_logic_unsigned.all;        -- @suppress "Deprecated package"
 use ieee.numeric_std.all;
-use work.okt_osu_pkg.all;
 use work.okt_global_pkg.all;
-use work.okt_ecu_pkg.all;
+use work.okt_fifo_pkg.all;
 use work.okt_top_pkg.all;
 
 entity okt_osu is                       -- Output Sequencer Unit
@@ -62,7 +61,7 @@ architecture Behavioral of okt_osu is
 	-- signal fifo_full         : std_logic;
 	-- signal fifo_almost_full  : std_logic; 
 	-- signal fifo_almost_empty : std_logic;
-	signal fifo_fill_count   : integer range OSU_FIFO_DEPTH - 1 downto 0;
+	signal fifo_fill_count   : integer range FIFO_DEPTH - 1 downto 0;
 	--signal usb_burst : integer;
 
 	signal usb_ready         : std_logic;
@@ -108,7 +107,7 @@ begin
 
 	ring_buffer : entity work.ring_buffer
 		generic map(
-			RAM_DEPTH => OSU_FIFO_DEPTH,
+			RAM_DEPTH => FIFO_DEPTH,
 			RAM_WIDTH => 32
 		)
 		port map(
@@ -147,25 +146,25 @@ begin
 
 			case n_command is
 
-				when "00001" =>         --MONITOR: Deactivates output and has IMU_ack connected to ECU_ack
+				when "000001" =>         --MONITOR: Deactivates output and has IMU_ack connected to ECU_ack
 					ecu_node_out_ack_n <= ecu_in_ack_n;
 
-				when "00010" =>         --PASS: bypasses output and connects IMU_ack to OUT_ack
+				when "000010" =>         --PASS: bypasses output and connects IMU_ack to OUT_ack
 					ecu_node_out_ack_n <= node_in_osu_ack_n;
 					node_in_data       <= aer_in_data(OUT_DATA_BITS_WIDTH - 1 downto 0);
 					node_req_n         <= req_in_data_n;
 
-				when "00011" =>         --MERGER: bypasses output and connects OUT_ACK and EMU_ACK to IMU_ACK via latch
+				when "000011" =>         --MERGER: bypasses output and connects OUT_ACK and EMU_ACK to IMU_ACK via latch
 					ecu_node_out_ack_n <= ecu_node_ack_n;
 					node_in_data       <= aer_in_data(OUT_DATA_BITS_WIDTH - 1 downto 0);
 					node_req_n         <= req_in_data_n;
 
-				when "00100" =>         --SEQUENCER: Activates output and cuts connections to internal ack signals
+				when "000100" =>         --SEQUENCER: Activates output and cuts connections to internal ack signals
 					node_in_data <= aer_data(OUT_DATA_BITS_WIDTH - 1 downto 0);
 					node_req_n   <= out_req;
 					out_ack      <= node_in_osu_ack_n;
 
-				when "00101" =>         --DEBUG: TODO
+				when "000101" =>         --DEBUG: TODO
 					node_in_data       <= aer_data(OUT_DATA_BITS_WIDTH - 1 downto 0);
 					node_req_n         <= out_req;
 					out_ack            <= node_in_osu_ack_n;
@@ -306,7 +305,7 @@ begin
 	--------------------------------------------------------------------------------------------------------------------
 	--Control USB: TODO: que no se bloquee al intentar llenarse de datos
 	control_usb_ready : process(clk, rst_n) is
-		variable usb_burst : integer range 0 to OSU_FIFO_DEPTH - 1;
+		variable usb_burst : integer range 0 to FIFO_DEPTH - 1;
 	begin
 		if rst_n = '0' then             --RESET
 			usb_ready         <= '0';
@@ -323,7 +322,7 @@ begin
 				fifo_w_en_end <= '0';
 			end if;
 
-			if fifo_fill_count < OSU_FIFO_DEPTH - FIFO_ALM_FULL_OFFSET then
+			if fifo_fill_count < FIFO_DEPTH - FIFO_ALM_FULL_OFFSET then
 				usb_ready <= '1';
 				usb_burst := USB_BURST_WORDS;
 			elsif usb_ready = '1' then

@@ -68,7 +68,7 @@ begin
     testProc : process
         variable expectedValue : std_logic_vector(r_data'range) := x"00000000";
         -- We have to create an arbitraily large number for a string (super annoying)
-        variable result        : Boolean; -- @suppress "variable result is never read"
+        variable result        : Boolean;  -- @suppress "Variable result is never read"
     begin
         -- Initialize important signals
         rst_n <= '1';

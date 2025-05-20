@@ -31,7 +31,7 @@ ARCHITECTURE behavior OF okt_imu_tb IS
 
 	signal input_select : std_logic_vector(NUM_INPUTS - 1 downto 0);
 
-	signal out_data : std_logic_vector(BUFFER_BITS_WIDTH - 1 downto 0); -- @suppress "signal out_data is never read"
+	signal out_data : std_logic_vector(BUFFER_BITS_WIDTH - 1 downto 0);  -- @suppress "Signal out_data is never read"
 	signal out_req  : std_logic;
 	signal out_ack  : std_logic;
 

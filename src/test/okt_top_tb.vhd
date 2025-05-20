@@ -13,8 +13,8 @@
 --------------------------------------------------------------------------------
 library IEEE;
 use IEEE.std_logic_1164.all;
-use IEEE.std_logic_arith.all; -- @suppress "Deprecated package"
-use IEEE.std_logic_unsigned.all; -- @suppress "Deprecated package"
+use IEEE.std_logic_arith.all;           -- @suppress "Deprecated package"
+use IEEE.std_logic_unsigned.all;        -- @suppress "Deprecated package"
 use IEEE.std_logic_textio.all;
 USE ieee.numeric_std.ALL;
 use work.FRONTPANEL.all;
@@ -54,11 +54,11 @@ architecture simulate of okt_top_tb is
 	signal hi_datain  : std_logic_vector(31 downto 0) := x"00000000";
 	signal hi_dataout : std_logic_vector(31 downto 0) := x"00000000";
 
-	signal sys_clkp : std_logic; -- @suppress "signal sys_clkp is never read"
-	signal sys_clkn : std_logic; -- @suppress "signal sys_clkn is never read"
+	signal sys_clkp : std_logic;        -- @suppress "signal sys_clkp is never read"
+	signal sys_clkn : std_logic;        -- @suppress "signal sys_clkn is never read"
 
 	-- Clocks
-	signal sys_clk : std_logic := '0'; -- @suppress "signal sys_clk is never read"
+	signal sys_clk : std_logic := '0';  -- @suppress "signal sys_clk is never read"
 
 	-- Reset
 	signal rst, rst_n : std_logic;
@@ -73,25 +73,24 @@ architecture simulate of okt_top_tb is
 	signal node_data    : std_logic_vector(NODE_DATA_BITS_WIDTH - 1 downto 0);
 	signal node_req_n   : std_logic;
 	signal node_ack_n   : std_logic;
-	
+
 	-- Output signals
-	signal out_data     : std_logic_vector(OUT_DATA_BITS_WIDTH - 1 downto 0); -- @suppress "signal out_data is never read"
-	signal out_req_n    : std_logic;
-	signal out_ack_n    : std_logic;
-	
-	signal cuenta			: std_logic_vector(7 downto 0);
+	signal out_data  : std_logic_vector(OUT_DATA_BITS_WIDTH - 1 downto 0); -- @suppress "signal out_data is never read"
+	signal out_req_n : std_logic;
+	signal out_ack_n : std_logic;
+
+	signal cuenta : std_logic_vector(7 downto 0);
 
 	type state is (idle, req_fall, req_rise);
 	signal current_state_rome_a, next_state_rome_a : state;
 	signal current_state_rome_b, next_state_rome_b : state;
 	signal current_state_node, next_state_node     : state;
 
-	type state_handshake is (idle, req_fall, delay1,delay2);
+	type state_handshake is (idle, req_fall, delay1, delay2);
 	signal current_state_out, next_state_out : state_handshake;
-	
 
 	---------------------------------------------------------------------------------------------
-	
+
 	--------------------------------------------------------------------------
 	-- Begin functional body
 	--------------------------------------------------------------------------
@@ -100,23 +99,23 @@ begin
 	rst_n <= not rst;
 	okt_u : entity work.okt_top
 		port map(
-			rst          => rst,
+			rst_ext_n    => rst,
 			okUH         => okUH,
 			okHU         => okHU,
 			okUHU        => okUHU,
 			okAA         => okAA,
-			rome_a_data  => rome_a_data,
-			rome_a_req_n => rome_a_req_n,
-			rome_a_ack_n => rome_a_ack_n,
-			rome_b_data  => rome_b_data,
-			rome_b_req_n => rome_b_req_n,
-			rome_b_ack_n => rome_b_ack_n,
-			node_data    => node_data,
-			node_req_n   => node_req_n,
-			node_out_ack_n   => node_ack_n,
+			port_a_data  => rome_a_data,
+			port_a_req_n => rome_a_req_n,
+			port_a_ack_n => rome_a_ack_n,
+			port_b_data  => rome_b_data,
+			port_b_req_n => rome_b_req_n,
+			port_b_ack_n => rome_b_ack_n,
+			port_c_data  => node_data,
+			port_c_req_n => node_req_n,
+			port_c_ack_n => node_ack_n,
 			out_data     => out_data,
 			out_req_n    => out_req_n,
-			node_in_ack_n    => out_ack_n,
+			out_ack_n    => out_ack_n,
 			leds         => leds
 		);
 
@@ -127,10 +126,10 @@ begin
 	hi_datain        <= okUHU;
 	hi_busy          <= okHU(0);
 	okUHU            <= hi_dataout when (hi_drive = '1') else (others => 'Z');
-	
---	rome_a_data <= out_data(ROME_DATA_BITS_WIDTH -1 downto 0);
---	rome_a_req_n <= out_req_n;
---	out_ack_n <= rome_a_ack_n;
+
+	--	rome_a_data <= out_data(ROME_DATA_BITS_WIDTH -1 downto 0);
+	--	rome_a_req_n <= out_req_n;
+	--	out_ack_n <= rome_a_ack_n;
 	---------------------------------------------------------------------------------------------
 
 	-- Clock Generation
@@ -166,9 +165,9 @@ begin
 		                                          --    host interface checks for ready (0-255)
 		variable PostReadyDelay   : integer := 5; -- REQUIRED: # of clocks after ready is asserted and
 		                                          --    check that the block transfer begins (0-255)
-		variable pipeInSize       : integer := 4*1024; -- REQUIRED: byte (must be even) length of default
+		variable pipeInSize       : integer := 4 * 1024; -- REQUIRED: byte (must be even) length of default
 		--    PipeIn; Integer 0-2^32
-		variable pipeOutSize      : integer := 4*1024; -- REQUIRED: byte (must be even) length of default
+		variable pipeOutSize      : integer := 4 * 1024; -- REQUIRED: byte (must be even) length of default
 		--    PipeOut; Integer 0-2^32
 		variable registerSetSize  : integer := 32; -- Size of array for register set commands.
 
@@ -747,7 +746,7 @@ begin
 		variable i              : integer;
 		variable j              : natural;
 		variable ReadPipe       : PIPEOUT_ARRAY;
-		variable WritePipe		: PIPEIN_ARRAY;
+		variable WritePipe      : PIPEIN_ARRAY;
 		variable num_write_line : integer := 0;
 
 		---------------------------------------------------------------------------------
@@ -813,62 +812,61 @@ begin
 
 					writeline(output, msg_line);
 					num_write_line := num_write_line + 1;
-					j := j + 8;
+					j              := j + 8;
 				end loop;
 				i := i + 1;
 			end loop;
 		end procedure read_USB_data;
 
---
-procedure write_USB_data(num_USB_transfers : integer) is
-begin
-    write(msg_line, STRING'("Writing values into USB pipe 93: "));
-    writeline(output, msg_line);
-    i := 0;
+		--
+		procedure write_USB_data(num_USB_transfers : integer) is
+		begin
+			write(msg_line, STRING'("Writing values into USB pipe 93: "));
+			writeline(output, msg_line);
+			i := 0;
 
-    while i < num_USB_transfers loop
-        --WriteToBlockPipeIn(x"93", 1024, pipeInSize);
-        j := 0;
-        while j < pipeInSize loop
-		  
-			pipeIn(j+0)     := x"05";
-			pipeIn(j+1)     := x"00";
-			pipeIn(j+2)     := x"00";
-			pipeIn(j+3)     := x"00";
-			pipeIn(j+4)     := x"2F";
-			pipeIn(j+5)     := x"2F";
-			pipeIn(j+6)     := x"00";
-			pipeIn(j+7)     := x"00";
+			while i < num_USB_transfers loop
+				--WriteToBlockPipeIn(x"93", 1024, pipeInSize);
+				j := 0;
+				while j < pipeInSize loop
 
-            write(msg_line, INTEGER'(num_write_line));
-            write(msg_line, STRING'(" Ts: 0x"));
-            hwrite(msg_line, STD_LOGIC_VECTOR'(pipeIn(j + 3)) & STD_LOGIC_VECTOR'(pipeIn(j + 2)));
-            hwrite(msg_line, STD_LOGIC_VECTOR'(pipeIn(j + 1)) & STD_LOGIC_VECTOR'(pipeIn(j)));
-            write(msg_line, STRING'(" - Addr 0x"));
-            hwrite(msg_line, STD_LOGIC_VECTOR'(pipeIn(j + 7)) & STD_LOGIC_VECTOR'(pipeIn(j + 6)));
-            hwrite(msg_line, STD_LOGIC_VECTOR'(pipeIn(j + 5)) & STD_LOGIC_VECTOR'(pipeIn(j + 4)));
-            writeline(output, msg_line);
-            num_write_line := num_write_line + 1;
-            j := j + 8;
-        end loop;
-		  WriteToBlockPipeIn(x"80", 1024, pipeInSize);
-        i := i + 1;
-    end loop;
-end procedure write_USB_data;
+					pipeIn(j + 0) := x"05";
+					pipeIn(j + 1) := x"00";
+					pipeIn(j + 2) := x"00";
+					pipeIn(j + 3) := x"00";
+					pipeIn(j + 4) := x"2F";
+					pipeIn(j + 5) := x"2F";
+					pipeIn(j + 6) := x"00";
+					pipeIn(j + 7) := x"00";
 
---
-		
+					write(msg_line, INTEGER'(num_write_line));
+					write(msg_line, STRING'(" Ts: 0x"));
+					hwrite(msg_line, STD_LOGIC_VECTOR'(pipeIn(j + 3)) & STD_LOGIC_VECTOR'(pipeIn(j + 2)));
+					hwrite(msg_line, STD_LOGIC_VECTOR'(pipeIn(j + 1)) & STD_LOGIC_VECTOR'(pipeIn(j)));
+					write(msg_line, STRING'(" - Addr 0x"));
+					hwrite(msg_line, STD_LOGIC_VECTOR'(pipeIn(j + 7)) & STD_LOGIC_VECTOR'(pipeIn(j + 6)));
+					hwrite(msg_line, STD_LOGIC_VECTOR'(pipeIn(j + 5)) & STD_LOGIC_VECTOR'(pipeIn(j + 4)));
+					writeline(output, msg_line);
+					num_write_line := num_write_line + 1;
+					j              := j + 8;
+				end loop;
+				WriteToBlockPipeIn(x"80", 1024, pipeInSize);
+				i := i + 1;
+			end loop;
+		end procedure write_USB_data;
+
+		--
+
 		procedure send_sw_rst(rst_command : std_logic_vector(31 downto 0)) is
 		begin
 			SetWireInValue(x"02", rst_command, NO_MASK);
 			UpdateWireIns;
 		end procedure;
-		
-		
+
 	begin
 		FrontPanelReset;
 		wait for 10 ns;
-		select_command(x"0000_0000"); 
+		select_command(x"0000_0000");
 		select_input(x"0000_0000");
 		wait for 10 ns;
 		--select_input(x"0000_0001");
@@ -880,15 +878,15 @@ end procedure write_USB_data;
 		--read_USB_data(1);
 		--select_command(x"0000_0005"); 
 		--wait for 100 ns;
-		
+
 		-- Select input 1 and 2
-		
+
 		--select_input(x"0000_0002");
 		--wait for 10 ns;
 		-- Check data
 		--read_USB_data(10);
 		--wait for 100 ns;
-		
+
 		-- Select input 3
 		select_input(x"0000_0007");
 		select_command(x"0000_0001");
@@ -898,7 +896,7 @@ end procedure write_USB_data;
 
 		wait;
 	end process sim_process;
-	
+
 	signals_update : process(hi_clk, rst_n)
 	begin
 		if rst_n = '0' then
@@ -988,34 +986,33 @@ end procedure write_USB_data;
 		end case;
 	end process;
 
---	OUT_FSM_transitions : process(current_state_out, out_req_n)
---	begin
---		next_state_out <= current_state_out;
---		out_ack_n      <= '1';
---
---		case current_state_out is
---			when idle =>
---				if (out_req_n = '0') then
---					next_state_out <= req_fall;
---				end if;
---				
---			when delay1 =>
---				next_state_out <= delay2;
---			
---
---			when req_fall =>
---				out_ack_n <= '0';
---				next_state_out <= delay2;
---
---			
---			when delay2 =>
---			out_ack_n <= '0';
---			if (out_req_n = '1') then
---				next_state_out <= idle;
---				end if;
---
---		end case;
---	end process;
-	
-	
+	--	OUT_FSM_transitions : process(current_state_out, out_req_n)
+	--	begin
+	--		next_state_out <= current_state_out;
+	--		out_ack_n      <= '1';
+	--
+	--		case current_state_out is
+	--			when idle =>
+	--				if (out_req_n = '0') then
+	--					next_state_out <= req_fall;
+	--				end if;
+	--				
+	--			when delay1 =>
+	--				next_state_out <= delay2;
+	--			
+	--
+	--			when req_fall =>
+	--				out_ack_n <= '0';
+	--				next_state_out <= delay2;
+	--
+	--			
+	--			when delay2 =>
+	--			out_ack_n <= '0';
+	--			if (out_req_n = '1') then
+	--				next_state_out <= idle;
+	--				end if;
+	--
+	--		end case;
+	--	end process;
+
 end simulate;

@@ -41,11 +41,12 @@ end okt_cu;
 
 architecture Behavioral of okt_cu is
 
-	constant Mask_MON    : std_logic_vector(COMMAND_BIT_WIDTH - 1 downto 0) := "00001";
-	constant Mask_PASS   : std_logic_vector(COMMAND_BIT_WIDTH - 1 downto 0) := "00010";
-	constant Mask_SEQ    : std_logic_vector(COMMAND_BIT_WIDTH - 1 downto 0) := "00100";
-	constant Mask_CONF_1 : std_logic_vector(COMMAND_BIT_WIDTH - 1 downto 0) := "01000";
-	constant Mask_CONF_2 : std_logic_vector(COMMAND_BIT_WIDTH - 1 downto 0) := "10000";
+	constant Mask_MON    : std_logic_vector(COMMAND_BIT_WIDTH - 1 downto 0) := "000001";
+	constant Mask_PASS   : std_logic_vector(COMMAND_BIT_WIDTH - 1 downto 0) := "000010";
+	constant Mask_SEQ    : std_logic_vector(COMMAND_BIT_WIDTH - 1 downto 0) := "000100";
+	constant Mask_CONF_1 : std_logic_vector(COMMAND_BIT_WIDTH - 1 downto 0) := "001000";
+	constant Mask_CONF_2 : std_logic_vector(COMMAND_BIT_WIDTH - 1 downto 0) := "010000";
+	constant Mask_CONF_3 : std_logic_vector(COMMAND_BIT_WIDTH - 1 downto 0) := "100000";
 	-- constant Mask_NULL   : std_logic_vector(COMMAND_BIT_WIDTH - 1 downto 0) := (others => '0');
 
 	signal n_command   : std_logic_vector(COMMAND_BIT_WIDTH - 1 downto 0);
@@ -162,6 +163,7 @@ begin
 		);
 	config_en(0) <= '1' when ((n_command and Mask_CONF_1) = Mask_CONF_1) else '0';
 	config_en(1) <= '1' when ((n_command and Mask_CONF_2) = Mask_CONF_2) else '0';
+	config_en(2) <= '1' when ((n_command and Mask_CONF_3) = Mask_CONF_3) else '0';
 	config_data  <= ep03wire(CONFIG_BITS_WIDTH - 1 downto 0);
 	config_addr  <= ep03wire(2 * CONFIG_BITS_WIDTH - 1 downto CONFIG_BITS_WIDTH);
 
@@ -221,7 +223,9 @@ begin
 				status(NUM_INPUTS + 2) <= '0'; -- Set SEQ led
 			end if;
 
-			if (((n_command and Mask_CONF_1) = Mask_CONF_1) or ((n_command and Mask_CONF_2) = Mask_CONF_2)) then -- CONF command. Send out configuration data through NODE_IN output
+			if (((n_command and Mask_CONF_1) = Mask_CONF_1) 
+				or ((n_command and Mask_CONF_2) = Mask_CONF_2)
+				or ((n_command and Mask_CONF_3) = Mask_CONF_3)) then -- CONF command. Send out configuration data through NODE_IN output
 				status(NUM_INPUTS + 3) <= '0'; -- Set CONF led
 			end if;
 

@@ -1,9 +1,10 @@
 
 LIBRARY ieee;
 USE ieee.std_logic_1164.all;
-use ieee.std_logic_unsigned.all; -- @suppress "Deprecated package"
+use ieee.std_logic_unsigned.all;        -- @suppress "Deprecated package"
 use work.okt_global_pkg.all;
-use work.okt_ecu_pkg.all;
+use work.okt_fifo_pkg.all;
+use work.okt_top_pkg.all;
 
 ENTITY okt_ecu_tb IS
 END okt_ecu_tb;
@@ -11,19 +12,19 @@ END okt_ecu_tb;
 ARCHITECTURE behavior OF okt_ecu_tb IS
 
     --Inputs
-    signal clk      : std_logic                     := '0';
-    signal rst_n    : std_logic                     := '0';
-    signal req_n    : std_logic                     := '0';
-    signal aer_data : std_logic_vector(BUFFER_BITS_WIDTH-1 downto 0) := (others => '0');
+    signal clk      : std_logic                                        := '0';
+    signal rst_n    : std_logic                                        := '0';
+    signal req_n    : std_logic                                        := '0';
+    signal aer_data : std_logic_vector(BUFFER_BITS_WIDTH - 1 downto 0) := (others => '0');
 
-    signal aer_data_r : std_logic_vector(BUFFER_BITS_WIDTH-1 downto 0) := (others => '0');
+    signal aer_data_r : std_logic_vector(BUFFER_BITS_WIDTH - 1 downto 0) := (others => '0');
     signal force_ovf  : std_logic;
-	 signal n_command: std_logic_vector(COMMAND_BIT_WIDTH - 1 downto 0);
+    signal n_command  : std_logic_vector(COMMAND_BIT_WIDTH - 1 downto 0);
 
     --Outputs
     signal ack_n     : std_logic;
-    signal out_data  : std_logic_vector(BUFFER_BITS_WIDTH-1 downto 0); -- @suppress "signal out_data is never read"
-    signal out_rd : std_logic;
+    signal out_data  : std_logic_vector(BUFFER_BITS_WIDTH - 1 downto 0); -- @suppress "signal out_data is never read"
+    signal out_rd    : std_logic;
     signal out_ready : std_logic;
 
     -- Clock period definitions
@@ -36,16 +37,16 @@ BEGIN
 
     -- Instantiate the Unit Under Test (UUT)
     okt_ecu : entity work.okt_ecu
-        PORT MAP(
-            clk       => clk,
-            rst_n     => rst_n,
-            req_n     => req_n,
-            aer_data  => aer_data,
-            ecu_out_ack_n     => ack_n,
-            out_data  => out_data,
-            out_rd    => out_rd,
-            out_ready => out_ready,
-				cmd => n_command
+        port map(
+            clk           => clk,
+            rst_n         => rst_n,
+            ecu_req_n     => req_n,
+            aer_data      => aer_data,
+            ecu_out_ack_n => ack_n,
+            out_data      => out_data,
+            out_rd        => out_rd,
+            out_ready     => out_ready,
+            cmd           => n_command
         );
 
     -- Clock process definitions
@@ -115,10 +116,10 @@ BEGIN
 
         end case;
     end process;
-    
+
     read_process : process(out_ready)
     begin
-        if(out_ready = '1') then
+        if (out_ready = '1') then
             out_rd <= '1';
         else
             out_rd <= '0';
