@@ -75,7 +75,7 @@ architecture simulate of okt_top_tb is
 	signal node_ack_n   : std_logic;
 	
 	-- Output signals
-	signal out_data     : std_logic_vector(NODE_IN_DATA_BITS_WIDTH - 1 downto 0); -- @suppress "signal out_data is never read"
+	signal out_data     : std_logic_vector(OUT_DATA_BITS_WIDTH - 1 downto 0); -- @suppress "signal out_data is never read"
 	signal out_req_n    : std_logic;
 	signal out_ack_n    : std_logic;
 	

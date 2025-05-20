@@ -10,51 +10,57 @@ use work.FRONTPANEL.all;
 
 entity okt_cu is                        -- Control Unit
 	Port(
-		clk       : out   std_logic;    -- 100.8 MHz
-		rst_n     : in    std_logic;
-		rst_sw    : out   std_logic;    -- sw rst coming from the USB trigger end-point
+		clk         : out   std_logic;  -- 100.8 MHz
+		rst_n       : in    std_logic;
+		rst_sw      : out   std_logic;  -- sw rst coming from the USB trigger end-point
 		-- USB 3.0 interface
-		okUH      : in    std_logic_vector(OK_UH_WIDTH_BUS - 1 downto 0);
-		okHU      : out   std_logic_vector(OK_HU_WIDTH_BUS - 1 downto 0);
-		okUHU     : inout std_logic_vector(OK_UHU_WIDTH_BUS - 1 downto 0);
-		okAA      : inout std_logic;
+		okUH        : in    std_logic_vector(OK_UH_WIDTH_BUS - 1 downto 0);
+		okHU        : out   std_logic_vector(OK_HU_WIDTH_BUS - 1 downto 0);
+		okUHU       : inout std_logic_vector(OK_UHU_WIDTH_BUS - 1 downto 0);
+		okAA        : inout std_logic;
 		-- ECU interface
-		ecu_data  : in    std_logic_vector(BUFFER_BITS_WIDTH - 1 downto 0);
-		ecu_rd    : out   std_logic;
-		ecu_ready : in    std_logic;
-		
+		ecu_data    : in    std_logic_vector(BUFFER_BITS_WIDTH - 1 downto 0);
+		ecu_rd      : out   std_logic;
+		ecu_ready   : in    std_logic;
 		--OSU interface
-		osu_data  : out   std_logic_vector(BUFFER_BITS_WIDTH - 1 downto 0);
-		osu_wr    : out   std_logic;
-		osu_ready : in    std_logic;
-		
+		osu_data    : out   std_logic_vector(BUFFER_BITS_WIDTH - 1 downto 0);
+		osu_wr      : out   std_logic;
+		osu_ready   : in    std_logic;
 		-- Input selection
-		input_sel : out   std_logic_vector(NUM_INPUTS - 1 downto 0);
+		input_sel   : out   std_logic_vector(NUM_INPUTS - 1 downto 0);
 		-- Leds
-		status    : out   std_logic_vector(LEDS_BITS_WIDTH - 1 downto 0);
+		status      : out   std_logic_vector(LEDS_BITS_WIDTH - 1 downto 0);
 		-- ECU and OSU interface
-		cmd	 	 :	out	std_logic_vector(COMMAND_BIT_WIDTH - 1 downto 0)
+		cmd         : out   std_logic_vector(COMMAND_BIT_WIDTH - 1 downto 0);
+		-- Configuration
+		config_data : out   std_logic_vector(CONFIG_BITS_WIDTH - 1 downto 0);
+		config_addr : out   std_logic_vector(CONFIG_BITS_WIDTH - 1 downto 0);
+		config_en   : out   std_logic_vector(CONFIG_NUN_DEVICES - 1 downto 0)
 	);
 end okt_cu;
 
 architecture Behavioral of okt_cu is
 
-	constant Mask_MON    :    std_logic_vector(2 downto 0):="001";
-	constant Mask_PASS   :    std_logic_vector(2 downto 0):="010";
-	constant Mask_SEQ    :    std_logic_vector(2 downto 0):="100";
+	constant Mask_MON    : std_logic_vector(COMMAND_BIT_WIDTH - 1 downto 0) := "00001";
+	constant Mask_PASS   : std_logic_vector(COMMAND_BIT_WIDTH - 1 downto 0) := "00010";
+	constant Mask_SEQ    : std_logic_vector(COMMAND_BIT_WIDTH - 1 downto 0) := "00100";
+	constant Mask_CONF_1 : std_logic_vector(COMMAND_BIT_WIDTH - 1 downto 0) := "01000";
+	constant Mask_CONF_2 : std_logic_vector(COMMAND_BIT_WIDTH - 1 downto 0) := "10000";
+	-- constant Mask_NULL   : std_logic_vector(COMMAND_BIT_WIDTH - 1 downto 0) := (others => '0');
 
 	signal n_command   : std_logic_vector(COMMAND_BIT_WIDTH - 1 downto 0);
 	signal n_input_sel : std_logic_vector(NUM_INPUTS - 1 downto 0);
+	signal n_rst_sw    : std_logic;
 
 	-- ECU Signals
-	signal n_ecu_data  : std_logic_vector(BUFFER_BITS_WIDTH - 1 downto 0);
-	signal n_ecu_rd    : std_logic;
-	signal n_ecu_ready : std_logic;
-	
+	-- signal n_ecu_data  : std_logic_vector(BUFFER_BITS_WIDTH - 1 downto 0);
+	-- signal n_ecu_rd    : std_logic;
+	-- signal n_ecu_ready : std_logic;
+
 	-- OSU Signals
-	 signal n_osu_data  : std_logic_vector(BUFFER_BITS_WIDTH - 1 downto 0);
-	 signal n_osu_wr    : std_logic;
-	 signal n_osu_ready : std_logic;
+	-- signal n_osu_data  : std_logic_vector(BUFFER_BITS_WIDTH - 1 downto 0);
+	-- signal n_osu_wr    : std_logic;
+	-- signal n_osu_ready : std_logic;
 
 	-- USB signals
 	signal okClk : std_logic;
@@ -63,40 +69,42 @@ architecture Behavioral of okt_cu is
 	signal okEHx : std_logic_vector(OK_EH_WIDTH_BUS * OK_NUM_okEHx_END_POINTS - 1 downto 0);
 
 	-- OK Endpoints
-	signal ep00wire         : std_logic_vector(BUFFER_BITS_WIDTH - 1 downto 0);
-	signal ep01wire         : std_logic_vector(BUFFER_BITS_WIDTH - 1 downto 0);
-	signal ep02wire         : std_logic_vector(BUFFER_BITS_WIDTH - 1 downto 0);
-	
+	signal ep00wire : std_logic_vector(BUFFER_BITS_WIDTH - 1 downto 0);
+	signal ep01wire : std_logic_vector(BUFFER_BITS_WIDTH - 1 downto 0);
+	signal ep02wire : std_logic_vector(BUFFER_BITS_WIDTH - 1 downto 0);
+	signal ep03wire : std_logic_vector(BUFFER_BITS_WIDTH - 1 downto 0);
+
 	signal epA0_datain      : std_logic_vector(BUFFER_BITS_WIDTH - 1 downto 0);
 	signal epA0_read        : std_logic;
-	signal epA0_blockstrobe : std_logic; -- @suppress "signal epA0_blockstrobe is never read"
+	signal epA0_blockstrobe : std_logic; -- @suppress "Signal epA0_blockstrobe is never read"
 	signal epA0_ready       : std_logic;
 
 	signal ep80_dataout     : std_logic_vector(BUFFER_BITS_WIDTH - 1 downto 0);
 	signal ep80_write       : std_logic;
-	signal ep80_blockstrobe : std_logic; -- @suppress "signal ep80_blockstrobe is never read"
+	signal ep80_blockstrobe : std_logic; -- @suppress "Signal ep80_blockstrobe is never read"
 	signal ep80_ready       : std_logic;
-	
-	signal status_n : std_logic_vector(LEDS_BITS_WIDTH - 1 downto 0);
-	
 
 begin
+	-- Connect the signals to the top level
+	ecu_rd      <= epA0_read;
+	epA0_datain <= ecu_data;
+	epA0_ready  <= ecu_ready;
 
-   -- inicializar variables osu aqui??
-	
-	n_ecu_data  <= ecu_data;
-	ecu_rd      <= n_ecu_rd;
-	n_ecu_ready <= ecu_ready;
-	
-	osu_data    <= n_osu_data;
-	osu_wr      <= n_osu_wr;
-	n_osu_ready <= osu_ready;
-	
-	status <= status_n;
+	osu_wr     <= ep80_write;
+	osu_data   <= ep80_dataout;
+	ep80_ready <= osu_ready;
+
+	-- n_ecu_data  <= ecu_data;
+	-- ecu_rd      <= n_ecu_rd;
+	-- n_ecu_ready <= ecu_ready;
+
+	-- osu_data    <= n_osu_data;
+	-- osu_wr      <= n_osu_wr;
+	-- n_osu_ready <= osu_ready;
 
 	input_sel <= n_input_sel;
-	
-	cmd <= n_command;
+	cmd       <= n_command;
+	rst_sw    <= n_rst_sw;
 
 	--okHI : work.FRONTPANEL.okHost
 	okHI : okHost
@@ -110,7 +118,6 @@ begin
 			okEH  => okEH
 		);
 	clk <= okClk;
-
 
 	okOR : okWireOR
 		generic map(
@@ -137,29 +144,40 @@ begin
 			ep_dataout => ep01wire
 		);
 
-	 --WireIn to receive sw rst from USB
+	-- WireIn to receive sw rst from USB
 	rst_EP : okWireIn
 		port map(
 			okHE       => okHE,
 			ep_addr    => x"02",
 			ep_dataout => ep02wire
 		);
-	rst_sw      <= ep02wire(0);
-	status_n(0) <= ep02wire(0);
+	n_rst_sw <= ep02wire(0);
 
-	 --PipeOut to send data out using the USB
+	-- WireIn to receive configuration data from USB
+	config_EP : okWireIn
+		port map(
+			okHE       => okHE,
+			ep_addr    => x"03",
+			ep_dataout => ep03wire
+		);
+	config_en(0) <= '1' when ((n_command and Mask_CONF_1) = Mask_CONF_1) else '0';
+	config_en(1) <= '1' when ((n_command and Mask_CONF_2) = Mask_CONF_2) else '0';
+	config_data  <= ep03wire(CONFIG_BITS_WIDTH - 1 downto 0);
+	config_addr  <= ep03wire(2 * CONFIG_BITS_WIDTH - 1 downto CONFIG_BITS_WIDTH);
+
+	--PipeOut to send data out using the USB
 	data_out_EP : okBTPipeOut
 		port map(
 			okHE           => okHE,
 			okEH           => okEHx(1 * OK_EH_WIDTH_BUS - 1 downto 0 * OK_EH_WIDTH_BUS),
-			ep_addr        => x"A0", 
+			ep_addr        => x"A0",
 			ep_read        => epA0_read,
 			ep_blockstrobe => epA0_blockstrobe,
 			ep_datain      => epA0_datain,
 			ep_ready       => epA0_ready
 		);
-		
-	 --PipeIn to receive data using the USB
+
+	--PipeIn to receive data using the USB
 	data_In_EP : okBTPipeIn
 		port map(
 			okHE           => okHE,
@@ -182,37 +200,78 @@ begin
 			n_input_sel <= ep01wire(NUM_INPUTS - 1 downto 0);
 		end if;
 	end process;
-	
+
 	-- Multiplexer that select the data path depending of the command
-	command_multiplexer : process(n_command,
-											epA0_read, n_ecu_data, n_ecu_ready, --ECU signals
-											ep80_write, ep80_dataout, n_osu_ready --OSU signals
-											)
+	leds_status : process(n_command, n_input_sel, epA0_read, ep80_write, n_rst_sw, rst_n)
 	begin
-		
-		n_ecu_rd    <= epA0_read;
-		epA0_datain <= n_ecu_data;
-		epA0_ready  <= n_ecu_ready;
-	
-		n_osu_wr    <= ep80_write;
-   	n_osu_data  <= ep80_dataout;
-		ep80_ready  <= n_osu_ready;
-		
-		status_n(LEDS_BITS_WIDTH - 1 downto 1) <= (others => '0');
+		if (rst_n = '0') then
+			status <= (others => '1');  -- Set all status led off
+		else
+			status(NUM_INPUTS - 1 downto 0) <= not n_input_sel; -- Set input selection led
 
-		if ((n_command and Mask_MON) = Mask_MON) then -- MON command. Send out captured event to USB
-			status_n(1) <= '1';     -- Set MON led
+			if ((n_command and Mask_MON) = Mask_MON) then -- MON command. Send out captured event to USB
+				status(NUM_INPUTS) <= '0'; -- Set MON led
+			end if;
+
+			if ((n_command and Mask_PASS) = Mask_PASS) then -- PASS command. Send out inputs events through NODE_IN output
+				status(NUM_INPUTS + 1) <= '0'; -- Set PASS led
+			end if;
+
+			if ((n_command and Mask_SEQ) = Mask_SEQ) then -- SEQ command. Send out inputs events through NODE_IN output 
+				status(NUM_INPUTS + 2) <= '0'; -- Set SEQ led
+			end if;
+
+			if (((n_command and Mask_CONF_1) = Mask_CONF_1) or ((n_command and Mask_CONF_2) = Mask_CONF_2)) then -- CONF command. Send out configuration data through NODE_IN output
+				status(NUM_INPUTS + 3) <= '0'; -- Set CONF led
+			end if;
+
+			if (n_rst_sw = '1') then    -- Software reset. Set all led on
+				status <= (others => '0');
+			end if;
+
+			if (epA0_read = '1' or ep80_write = '1') then -- ECU or OSU read/write. Set MSB led on
+				status(LEDS_BITS_WIDTH - 1) <= '0'; -- Set MSB led
+			end if;
 		end if;
 
-		if ((n_command and Mask_PASS) = Mask_PASS) then -- PASS command. Send out inputs events through NODE_IN output
-			status_n(2) <= '1';     -- Set PASS led
-		end if;
-		
-		if ((n_command and Mask_SEQ) = Mask_SEQ) then -- SEQ command. Send out inputs events through NODE_IN output 
-			status_n(3) <= '1';     -- Set SEQ led
-		end if;
-		
 	end process;
+
+	-- -- Multiplexer that select the data path depending of the command
+	-- command_multiplexer : process(n_command, epA0_read, n_ecu_data, n_ecu_ready, --ECU signals
+	-- 	ep80_write, ep80_dataout, n_osu_ready --OSU signals
+	-- 	)
+	-- begin
+	-- 	n_ecu_rd    <= epA0_read;
+	-- 	epA0_datain <= n_ecu_data;
+	-- 	epA0_ready  <= n_ecu_ready;
+
+	-- 	n_osu_wr   <= ep80_write;
+	-- 	n_osu_data <= ep80_dataout;
+	-- 	ep80_ready <= n_osu_ready;
+
+	-- 	status(LEDS_BITS_WIDTH - 1 downto 5) <= (others => '1'); -- Set all status led off
+
+	-- 	if ((n_command and Mask_MON) = Mask_MON) then -- MON command. Send out captured event to USB
+	-- 		status(1) <= '1';         -- Set MON led
+	-- 	end if;
+
+	-- 	if ((n_command and Mask_PASS) = Mask_PASS) then -- PASS command. Send out inputs events through NODE_IN output
+	-- 		status(2) <= '1';         -- Set PASS led
+	-- 	end if;
+
+	-- 	if ((n_command and Mask_SEQ) = Mask_SEQ) then -- SEQ command. Send out inputs events through NODE_IN output 
+	-- 		status(3) <= '1';         -- Set SEQ led
+	-- 	end if;
+
+	-- 	if ((n_command and Mask_CONF_1) = Mask_CONF_1) then -- CONF command. Send out configuration data through NODE_IN output
+	-- 		status(4) <= '1';         -- Set CONF led
+	-- 	end if;
+
+	-- 	if ((n_command and Mask_CONF_2) = Mask_CONF_2) then -- CONF command. Send out configuration data through NODE_IN output
+	-- 		status(4) <= '1';         -- Set CONF led
+	-- 	end if;
+
+	-- end process;
 
 end Behavioral;
 

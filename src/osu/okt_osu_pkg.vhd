@@ -4,8 +4,6 @@ use work.okt_global_pkg.all;
 
 package okt_osu_pkg is
 	constant OSU_FIFO_DEPTH            : integer := 16*1024; -- 4 bytes words
-	constant NODE_IN_DATA_BITS_WIDTH   : integer := 32; -- 28?
-	constant COMMAND_BIT_WIDTH 		  : integer := 3;
 	constant USB_BURST_WORDS           : integer := 1024;
    constant TIMESTAMP_OVF       		  : std_logic_vector(TIMESTAMP_BITS_WIDTH - 1 downto 0) := (others => '1');
 

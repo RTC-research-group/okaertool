@@ -4,8 +4,8 @@ use ieee.STD_LOGIC_1164.all;
 use ieee.std_logic_unsigned.all;        -- @suppress "Deprecated package"
 use ieee.numeric_std.all;
 use work.okt_ecu_pkg.all;
-use work.okt_fifo_pkg.all;
 use work.okt_global_pkg.all;
+use work.okt_top_pkg.all;
 
 entity okt_ecu is                       -- Event Capture Unit
 	Port(
@@ -21,7 +21,7 @@ entity okt_ecu is                       -- Event Capture Unit
 		out_ready : out std_logic;
 		--
 		
-		status    : out std_logic_vector(LEDS_BITS_WIDTH - 1 downto 0);
+		-- status    : out std_logic_vector(LEDS_BITS_WIDTH - 1 downto 0);
 		cmd		 : in std_logic_vector(COMMAND_BIT_WIDTH - 1 downto 0)
 );
 end okt_ecu;
@@ -39,10 +39,10 @@ architecture Behavioral of okt_ecu is
 	signal ECU_fifo_w_en   		  : std_logic;
 	signal ECU_fifo_r_data 		  : std_logic_vector(BUFFER_BITS_WIDTH - 1 downto 0);
 	signal ECU_fifo_r_en   		  : std_logic;
-	signal ECU_fifo_empty  		  : std_logic;
+	-- signal ECU_fifo_empty  		  : std_logic;
 	signal ECU_fifo_full  		  : std_logic;
-	signal ECU_fifo_almost_full   : std_logic;
-	signal ECU_fifo_almost_empty   : std_logic;
+	-- signal ECU_fifo_almost_full   : std_logic;
+	-- signal ECU_fifo_almost_empty   : std_logic;
 	signal ECU_fifo_fill_count 	: integer range FIFO_DEPTH - 1 downto 0;
 	--signal usb_burst : integer;
 	
@@ -53,14 +53,14 @@ architecture Behavioral of okt_ecu is
 	signal n_command: std_logic_vector(COMMAND_BIT_WIDTH - 1 downto 0);
 
 	-- DEBUG
-	attribute MARK_DEBUG : string;
-	attribute MARK_DEBUG of r_okt_ecu_control_state, n_okt_ecu_control_state, r_timestamp, n_timestamp, n_ack_n : signal is "TRUE";
+	-- attribute MARK_DEBUG : string;
+	-- attribute MARK_DEBUG of r_okt_ecu_control_state, n_okt_ecu_control_state, r_timestamp, n_timestamp, n_ack_n : signal is "TRUE";
 
 begin
 
 	--ecu_req_n <= req_n;
 	ecu_out_ack_n <= n_ack_n;
-	status <= "00000" & ECU_usb_ready & ECU_fifo_empty & ECU_fifo_full;
+	-- status <= "00000" & ECU_usb_ready & ECU_fifo_empty & ECU_fifo_full;
 	n_command <= cmd;
 
 --	caputre_fifo : entity work.okt_fifo
@@ -83,7 +83,7 @@ begin
 	ring_buffer : entity work.ring_buffer
 		generic map(
 			RAM_DEPTH => FIFO_DEPTH,
-			RAM_WIDTH => 32
+			RAM_WIDTH => BUFFER_BITS_WIDTH
 		)
 		port map(
 			clk    => clk,
@@ -92,11 +92,11 @@ begin
 			wr_en   => ECU_fifo_w_en,
 			rd_data => ECU_fifo_r_data,
 			rd_en   => ECU_fifo_r_en,
-			empty  => ECU_fifo_empty,
+			-- empty  => ECU_fifo_empty,
 			full   => ECU_fifo_full,
-			full_next => ECU_fifo_almost_full,
-			fill_count => ECU_fifo_fill_count,
-			empty_next => ECU_fifo_almost_empty
+			-- full_next => ECU_fifo_almost_full,
+			fill_count => ECU_fifo_fill_count
+			-- empty_next => ECU_fifo_almost_empty
 		);
 
 	out_data  <= ECU_fifo_r_data;
@@ -179,7 +179,7 @@ begin
 	end process;
 	
 	control_ECU_usb_ready : process(clk, rst_n) is
-	   variable usb_burst : integer;
+	   variable usb_burst : integer range 0 to USB_BURST_WORDS;
 	begin
 		if rst_n = '0' then
 			ECU_usb_ready <= '0';

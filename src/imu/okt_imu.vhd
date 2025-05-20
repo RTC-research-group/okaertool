@@ -42,8 +42,8 @@ architecture Behavioral of okt_imu is
 	signal r_okt_control_state, n_okt_control_state : state;
 
 	-- DEBUG
-	attribute MARK_DEBUG : string;
-	attribute MARK_DEBUG of r_okt_control_state, n_okt_control_state : signal is "TRUE";
+	-- attribute MARK_DEBUG : string;
+	-- attribute MARK_DEBUG of r_okt_control_state, n_okt_control_state : signal is "TRUE";
 
 begin
 

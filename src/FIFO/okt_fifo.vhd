@@ -3,7 +3,7 @@ use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
 use ieee.math_real.all;
 use work.okt_global_pkg.all;
-use work.okt_fifo_pkg.all;
+use work.okt_ecu_pkg.all;
 
 entity okt_fifo is -- Fifo
     generic(

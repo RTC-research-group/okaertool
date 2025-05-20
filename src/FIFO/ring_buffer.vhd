@@ -19,7 +19,7 @@
 ----------------------------------------------------------------------------------
 library ieee;
 use ieee.std_logic_1164.all;
-use work.okt_fifo_pkg.all;
+use work.okt_ecu_pkg.all;
  
 entity ring_buffer is
   generic (

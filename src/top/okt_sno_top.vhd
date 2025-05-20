@@ -26,7 +26,7 @@ use work.okt_sno_pkg.all;
 entity okt_sno_top is
     port(
         clock        : in  std_logic;
-        rst_ext      : in  std_logic;
+        rst_n      : in  std_logic;
         -- AER OUTPUT interface
         AER_DATA_OUT : out std_logic_vector(NAS_AER_ADDRESS_BITS - 1 downto 0);
         AER_REQ      : out std_logic;
@@ -44,16 +44,16 @@ begin
     okt_sno_inst : entity work.okt_sno
         port map(
             clk        => clock,
-            rst_n      => rst_ext,
+            rst_n      => rst_n,
             node_data  => AER_DATA_OUT,
             node_req_n => AER_REQ,
             node_ack_n => node_ack_n_latch_1
         );
 
     -- Double latch the node_ack_n signal to avoid metastability
-    ACK_latch : process(clock, rst_ext)
+    ACK_latch : process(clock, rst_n)
     begin
-        if rst_ext = '0' then
+        if rst_n = '0' then
             node_ack_n_latch_0 <= '1';
             node_ack_n_latch_1 <= '1';
         elsif rising_edge(clock) then
