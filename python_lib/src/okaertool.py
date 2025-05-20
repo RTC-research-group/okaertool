@@ -65,6 +65,7 @@ class Okaertool:
     INWIRE_COMMAND_ENDPOINT = 0x00
     INWIRE_SELINPUT_ENDPOINT = 0x01
     INWIRE_RESET_ENDPOINT = 0x02
+    INWIRE_CONFIG_ENDPOINT = 0x03
     NUM_INPUTS = 3
     USB_BLOCK_SIZE = 1024
     LOG_LEVEL = logging.INFO
@@ -158,7 +159,7 @@ class Okaertool:
     def __select_inputs__(self, inputs=[]):
         """
         Select the inputs that the user wants to work with. These inputs are captured under the same timestamp domain.
-        :param inputs: List of input ports to capture information. Possible values: 'port_a' 'port_b' 'node_out'
+        :param inputs: List of input ports to capture information. Possible values: 'port_a' 'port_b' 'port_c'
         :return:
         """
         # Set the value of the input wire. The value is a 3-bit number where each bit represents an input.
@@ -168,7 +169,7 @@ class Okaertool:
                 selinput_endpoint_value += 1  # Set 1 in the bit number 0
             if 'port_b' in inputs:
                 selinput_endpoint_value += 2  # Set 1 in the bit number 1
-            if 'node_out' in inputs:
+            if 'port_c' in inputs:
                 selinput_endpoint_value += 4  # Set 1 in the bit number 2
         self.logger.debug(f'Value of input selection: {selinput_endpoint_value}')
 
@@ -190,6 +191,8 @@ class Okaertool:
         - monitor_bypass: Capture events from the IMU module, put a timestamp to each event sending them to the ECU module and
             bypass the events to the OSU module
         - sequencer: Send events from the software to the OKAERTool to be sequenced using the OSU module
+        - config_port_a: Configure the device connected to the port A
+        - config_port_b: Configure the device connected to the port B
         :param command: List of commands. Possible values: 'idle' 'monitor' 'bypass' 'monitor_bypass' 'sequencer'
         :return:
         """
@@ -208,7 +211,11 @@ class Okaertool:
             if 'sequencer' in command:
                 command_endpoint_value += 4  # Set 1 in the bit number 2
             if 'debug' in command:
-                command_endpoint_value += 5  # Set 1 in the bit number 2
+                command_endpoint_value += 5  
+            if 'config_port_a' in command:
+                command_endpoint_value += 8  # Set 1 in the bit number 3
+            if 'config_port_b' in command:
+                command_endpoint_value += 16 # Set 1 in the bit number 4
 
         self.logger.debug(f'Value of command selection: {command_endpoint_value}')
 
@@ -226,9 +233,9 @@ class Okaertool:
         spikes structs. Each struct contains the timestamps and addresses of the events/spikes captured in the same input:
         - Input 0: port_a
         - Input 1: port_b
-        - Input 2: node_out
+        - Input 2: port_c
 
-        :param inputs: List of strings that contains input port to capture. Possible values: 'port_a' 'port_b' 'node_out'
+        :param inputs: List of strings that contains input port to capture. Possible values: 'port_a' 'port_b' 'port_c'
         :param max_spikes: Maximum number of spikes to be captured.
         :param duration: Duration of the capture in seconds
         :return: spikes: List of captured spikes (ts, addr)
@@ -414,7 +421,7 @@ class Okaertool:
         return spikes
 
     
-    def monitor_forever(self):
+    def monitor_forever(self, inputs=[]):
         """
         Get the information captured by the tool (ECU) and save it in different spikes structs depending on the selected
         inputs. First, the events/spikes are collected in the IMU, next are captured in the ECU putting a timestamp and 
@@ -428,7 +435,7 @@ class Okaertool:
         :return: spikes: List of captured spikes (ts, addr)
         """
         self.logger.info('Monitoring forever started in a new thread') 
-        self.monitor_thread = threading.Thread(target=self.monitor)
+        self.monitor_thread = threading.Thread(target=self.monitor, args=(inputs, None, None))
         self.monitor_thread.start()
 
 
@@ -569,3 +576,37 @@ class Okaertool:
         binary_file.write(buffer_seq_extended)
         print('Sequenced data has been saved into "my_file_sequenced_B"')
         print('--------------------------')
+
+    def set_config(self, device, register_address, register_value):
+        """
+        Set the value of a register pointed by an address. The pair (address, value) is a 32-bit number where the fist 16 bits
+        are the register address and the last 16 bits are the register value.
+        :param device: Device to be configured. Possible values: 'port_a' 'port_b'
+        :param register_address: Address of the register to be set
+        :param register_value: Value to be set in the register
+        :return: 0 if the operation is successful, -1 if the device is not defined
+        """
+        # Concatenate the address and value into a 32-bit number
+        address = (register_address & 0xFFFF) << 16
+        value = register_value & 0xFFFF
+        address_value = address | value
+        # Set the command to configure the device
+        if device == 'port_a':
+            self.__select_command__(['config_port_a'])
+        elif device == 'port_b':
+            self.__select_command__(['config_port_b'])
+        else:
+            self.logger.error('Device not defined')
+            return -1
+        # Set the value of the register
+        self.device.SetWireInValue(self.INWIRE_CONFIG_ENDPOINT, address_value)
+        self.device.UpdateWireIns()
+        # Set the command to idle
+        self.__select_command__(['idle'])
+        # Set the value of the register to zero
+        self.device.SetWireInValue(self.INWIRE_CONFIG_ENDPOINT, 0x00000000)
+        self.device.UpdateWireIns()
+        self.logger.info(f'Configuring {device} with address {hex(register_address)} and value {hex(register_value)}')
+        # Wait 10ms to ensure that the register is set
+        time.sleep(0.01)
+        return 0
