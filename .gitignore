@@ -1,3 +1,9 @@
 ISE/
 usb_mini2/
 vivado/
+*.zip
+*webtalk*
+*impact*
+output.txt
+__pycache__/
+okaertool.log
