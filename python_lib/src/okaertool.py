@@ -19,11 +19,15 @@
 ##                                                                             ##
 #################################################################################
 import time
-import ok.ok as ok
 import logging
 from collections import Counter
 import numpy as np
 import threading
+import platform
+if platform.system() == 'Linux':
+    import ok_linux.ok as ok
+else:
+    import ok_win.ok as ok
 
 class Spikes:
     """

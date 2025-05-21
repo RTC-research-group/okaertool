@@ -7,3 +7,5 @@ vivado/
 output.txt
 __pycache__/
 okaertool.log
+*.rar
+*.exe
