@@ -116,25 +116,28 @@ set_property IOSTANDARD LVCMOS33 [get_ports pdm_clk_right]
 set_property PACKAGE_PIN AB7 [get_ports pdm_dat_right]
 set_property IOSTANDARD LVCMOS33 [get_ports pdm_dat_right]
 
-set_property PACKAGE_PIN AB6 [get_ports source_sel]
-set_property IOSTANDARD LVCMOS33 [get_ports source_sel]
+#set_property PACKAGE_PIN AB6 [get_ports source_sel]
+#set_property IOSTANDARD LVCMOS33 [get_ports source_sel]
 
 # I2S ADC
-set_property PACKAGE_PIN Y2 [get_ports i2s_d_in]
-set_property IOSTANDARD LVCMOS33 [get_ports i2s_d_in]
-set_property PACKAGE_PIN AA3 [get_ports i2s_bclk]
-set_property IOSTANDARD LVCMOS33 [get_ports i2s_bclk]
-set_property PACKAGE_PIN R2 [get_ports i2s_lr]
-set_property IOSTANDARD LVCMOS33 [get_ports i2s_lr]
+#set_property PACKAGE_PIN Y2 [get_ports i2s_d_in]
+#set_property IOSTANDARD LVCMOS33 [get_ports i2s_d_in]
+#set_property PACKAGE_PIN AA3 [get_ports i2s_bclk]
+#set_property IOSTANDARD LVCMOS33 [get_ports i2s_bclk]
+#set_property PACKAGE_PIN R2 [get_ports i2s_lr]
+#set_property IOSTANDARD LVCMOS33 [get_ports i2s_lr]
 
 
 # I2S ADC on board interface ###############################################
-#set_property PACKAGE_PIN V4 [get_ports i2s_d_in]
-#set_property IOSTANDARD LVCMOS33 [get_ports i2s_d_in]
-#set_property PACKAGE_PIN Y16 [get_ports i2s_bclk]
-#set_property IOSTANDARD LVCMOS33 [get_ports i2s_bclk]
-#set_property PACKAGE_PIN AB15 [get_ports i2s_lr]
-#set_property IOSTANDARD LVCMOS33 [get_ports i2s_lr]
+set_property PACKAGE_PIN V4 [get_ports i2s_d_in]
+set_property IOSTANDARD LVCMOS33 [get_ports i2s_d_in]
+set_property PACKAGE_PIN Y16 [get_ports i2s_bclk]
+set_property IOSTANDARD LVCMOS33 [get_ports i2s_bclk]
+set_property PACKAGE_PIN AB15 [get_ports i2s_lr]
+set_property IOSTANDARD LVCMOS33 [get_ports i2s_lr]
+set_property PACKAGE_PIN AB3 [get_ports adc_clk]
+set_property IOSTANDARD LVCMOS33 [get_ports adc_clk]
+
 
 # I2S ADC placa china ######################################################
 #set_property PACKAGE_PIN W7 [get_ports i2s_d_in]
