@@ -66,7 +66,7 @@ class Okaertool:
     INWIRE_RESET_ENDPOINT = 0x02
     INWIRE_CONFIG_ENDPOINT = 0x03
     NUM_INPUTS = 3
-    USB_BLOCK_SIZE = 16 * 1024
+    USB_BLOCK_SIZE = 1024
     LOG_LEVEL = logging.INFO
     LOG_FILE = "okaertool.log"
     SPIKE_SIZE_BYTES = 8
