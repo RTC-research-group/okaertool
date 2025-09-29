@@ -24,6 +24,7 @@ use ieee.numeric_std.all;
 use work.okt_global_pkg.all;
 use work.okt_fifo_pkg.all;
 use work.okt_top_pkg.all;
+use work.okt_cu_pkg.all;
 
 entity okt_osu is                       -- Output Sequencer Unit
 	Port(
@@ -144,27 +145,27 @@ begin
 			node_in_data       <= (others => '0');
 			out_ack            <= '1';
 
-			case n_command is
+			case n_command(2 downto 0) is
 
-				when "000001" =>         --MONITOR: Deactivates output and has IMU_ack connected to ECU_ack
+				when Mask_MON(2 downto 0) =>         --MONITOR: Deactivates output and has IMU_ack connected to ECU_ack
 					ecu_node_out_ack_n <= ecu_in_ack_n;
 
-				when "000010" =>         --PASS: bypasses output and connects IMU_ack to OUT_ack
+				when Mask_PASS(2 downto 0) =>         --PASS: bypasses output and connects IMU_ack to OUT_ack
 					ecu_node_out_ack_n <= node_in_osu_ack_n;
 					node_in_data       <= aer_in_data(OUT_DATA_BITS_WIDTH - 1 downto 0);
 					node_req_n         <= req_in_data_n;
 
-				when "000011" =>         --MERGER: bypasses output and connects OUT_ACK and EMU_ACK to IMU_ACK via latch
+				when (Mask_MON(2 downto 0) or Mask_PASS(2 downto 0)) =>         --MERGER: bypasses output and connects OUT_ACK and ECU_ACK to IMU_ACK via latch
 					ecu_node_out_ack_n <= ecu_node_ack_n;
 					node_in_data       <= aer_in_data(OUT_DATA_BITS_WIDTH - 1 downto 0);
 					node_req_n         <= req_in_data_n;
 
-				when "000100" =>         --SEQUENCER: Activates output and cuts connections to internal ack signals
+				when Mask_SEQ(2 downto 0) =>         --SEQUENCER: Activates output and cuts connections to internal ack signals
 					node_in_data <= aer_data(OUT_DATA_BITS_WIDTH - 1 downto 0);
 					node_req_n   <= out_req;
 					out_ack      <= node_in_osu_ack_n;
 
-				when "000101" =>         --DEBUG: TODO
+				when (Mask_MON(2 downto 0) or Mask_SEQ(2 downto 0)) =>         --DEBUG: TODO
 					node_in_data       <= aer_data(OUT_DATA_BITS_WIDTH - 1 downto 0);
 					node_req_n         <= out_req;
 					out_ack            <= node_in_osu_ack_n;

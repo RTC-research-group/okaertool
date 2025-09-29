@@ -5,6 +5,8 @@ use ieee.std_logic_unsigned.all;        -- @suppress "Deprecated package"
 use work.okt_global_pkg.all;
 use work.okt_fifo_pkg.all;
 use work.okt_top_pkg.all;
+use std.env.finish;
+use work.okt_cu_pkg.all;
 
 ENTITY okt_ecu_tb IS
 END okt_ecu_tb;
@@ -19,11 +21,11 @@ ARCHITECTURE behavior OF okt_ecu_tb IS
 
     signal aer_data_r : std_logic_vector(BUFFER_BITS_WIDTH - 1 downto 0) := (others => '0');
     signal force_ovf  : std_logic;
-    signal n_command  : std_logic_vector(COMMAND_BIT_WIDTH - 1 downto 0);
+    signal command  : std_logic_vector(COMMAND_BIT_WIDTH - 1 downto 0);
 
     --Outputs
     signal ack_n     : std_logic;
-    signal out_data  : std_logic_vector(BUFFER_BITS_WIDTH - 1 downto 0); -- @suppress "signal out_data is never read"
+    signal out_data  : std_logic_vector(BUFFER_BITS_WIDTH - 1 downto 0);  -- @suppress "Signal out_data is never read"
     signal out_rd    : std_logic;
     signal out_ready : std_logic;
 
@@ -46,7 +48,7 @@ BEGIN
             out_data      => out_data,
             out_rd        => out_rd,
             out_ready     => out_ready,
-            cmd           => n_command
+            cmd           => command
         );
 
     -- Clock process definitions
@@ -61,20 +63,27 @@ BEGIN
     -- Stimulus process
     stim_proc : process
     begin
-        -- hold reset state for 100 ns.
+        report "hold reset state for 100 ns";
         wait for 100 ns;
         force_ovf <= '0';
         rst_n     <= '0';
         wait for CLK_period * 10;
         rst_n     <= '1';
+        report "reset deasserted";
         -- insert stimulus here
 
+        report "Send a few AER events";
+        command <= Mask_MON;
         wait for 500 us;
+        report "Force an overflow for 2 ms";
         force_ovf <= '1';
         wait for 2 ms;
+        report "Release overflow";
         force_ovf <= '0';
-
-        wait;
+        wait for 10 ms;
+        command <= Mask_IDLE;
+        report "End of simulation";
+        finish;
     end process;
 
     signals_update : process(clk, rst_n)

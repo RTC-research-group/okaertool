@@ -40,15 +40,7 @@ entity okt_cu is                        -- Control Unit
 end okt_cu;
 
 architecture Behavioral of okt_cu is
-
-	constant Mask_MON    : std_logic_vector(COMMAND_BIT_WIDTH - 1 downto 0) := "000001";
-	constant Mask_PASS   : std_logic_vector(COMMAND_BIT_WIDTH - 1 downto 0) := "000010";
-	constant Mask_SEQ    : std_logic_vector(COMMAND_BIT_WIDTH - 1 downto 0) := "000100";
-	constant Mask_CONF_1 : std_logic_vector(COMMAND_BIT_WIDTH - 1 downto 0) := "001000";
-	constant Mask_CONF_2 : std_logic_vector(COMMAND_BIT_WIDTH - 1 downto 0) := "010000";
-	constant Mask_CONF_3 : std_logic_vector(COMMAND_BIT_WIDTH - 1 downto 0) := "100000";
-	-- constant Mask_NULL   : std_logic_vector(COMMAND_BIT_WIDTH - 1 downto 0) := (others => '0');
-
+	-- CU Signals
 	signal n_command   : std_logic_vector(COMMAND_BIT_WIDTH - 1 downto 0);
 	signal n_input_sel : std_logic_vector(NUM_INPUTS - 1 downto 0);
 	signal n_rst_sw    : std_logic;
@@ -84,6 +76,14 @@ architecture Behavioral of okt_cu is
 	signal ep80_write       : std_logic;
 	signal ep80_blockstrobe : std_logic; -- @suppress "Signal ep80_blockstrobe is never read"
 	signal ep80_ready       : std_logic;
+
+	-- DEBUG
+	attribute MARK_DEBUG : string; 
+	attribute MARK_DEBUG of rst_n, rst_sw, okUH, okHU, okUHU, okAA, ecu_data, ecu_rd, ecu_ready, osu_data, 
+							osu_wr, osu_ready, input_sel, status, cmd, config_data, config_addr, config_en, 
+							n_command, n_input_sel, n_rst_sw, okClk, okHE, okEH, okEHx, ep00wire, ep01wire, 
+							ep02wire, ep03wire, epA0_datain, epA0_read, epA0_blockstrobe, epA0_ready, ep80_dataout, 
+							ep80_write, ep80_blockstrobe, ep80_ready : signal is "TRUE";
 
 begin
 	-- Connect the signals to the top level
@@ -209,6 +209,9 @@ begin
 		if (rst_n = '0') then
 			status <= (others => '1');  -- Set all status led off
 		else
+			-- Default assignment
+        	status <= (others => '1');  -- Set all LEDs off by default
+			
 			status(NUM_INPUTS - 1 downto 0) <= not n_input_sel; -- Set input selection led
 
 			if ((n_command and Mask_MON) = Mask_MON) then -- MON command. Send out captured event to USB

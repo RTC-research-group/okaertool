@@ -12,7 +12,7 @@ package okt_global_pkg is
     constant OK_HE_WIDTH_BUS           		: integer := 113;
     constant OK_NUM_okEHx_END_POINTS   		: integer := 2;
     constant LEDS_BITS_WIDTH           		: integer := 8;
-	 constant TIMESTAMP_BITS_WIDTH 				: integer := 22; --BUFFER_BITS_WIDTH;
+	constant TIMESTAMP_BITS_WIDTH 			: integer := 32;
 end okt_global_pkg;
 
 package body okt_global_pkg is

@@ -18,8 +18,6 @@ entity okt_ecu is                       -- Event Capture Unit
 		out_data      : out std_logic_vector(BUFFER_BITS_WIDTH - 1 downto 0);
 		out_rd        : in  std_logic;
 		out_ready     : out std_logic;
-		--
-
 		-- status    : out std_logic_vector(LEDS_BITS_WIDTH - 1 downto 0);
 		cmd           : in  std_logic_vector(COMMAND_BIT_WIDTH - 1 downto 0)
 	);
@@ -52,8 +50,12 @@ architecture Behavioral of okt_ecu is
 	signal n_command : std_logic_vector(COMMAND_BIT_WIDTH - 1 downto 0);
 
 	-- DEBUG
-	-- attribute MARK_DEBUG : string;
-	-- attribute MARK_DEBUG of r_okt_ecu_control_state, n_okt_ecu_control_state, r_timestamp, n_timestamp, n_ack_n : signal is "TRUE";
+	attribute MARK_DEBUG : string; 
+	attribute MARK_DEBUG of rst_n, ecu_req_n, aer_data, ecu_out_ack_n, out_data, out_rd, out_ready, cmd, 
+							r_okt_ecu_control_state, n_okt_ecu_control_state, r_timestamp, n_timestamp, 
+							n_ack_n, ECU_fifo_w_data, ECU_fifo_w_en, ECU_fifo_r_data, ECU_fifo_r_en, 
+							ECU_fifo_full, ECU_fifo_fill_count, ECU_usb_ready, ECU_fifo_r_en_end, 
+							ECU_fifo_r_en_latched, n_command : signal is "TRUE";
 
 begin
 
