@@ -1,6 +1,0 @@
-03/19/25 12:29:39 PM - INFO : No bit file loaded. Ensure that the FPGA is already programmed
-03/19/25 12:29:39 PM - INFO : okaertool initialized as idle
-03/19/25 12:29:49 PM - INFO : Board reset
-03/19/25 12:29:49 PM - INFO : Buffer length: 1024
-03/19/25 12:29:52 PM - INFO : Monitoring duration: 3.0003886222839355 seconds
-03/19/25 12:29:52 PM - INFO : Number of spikes: 547328. Number of read bytes: 4378624
