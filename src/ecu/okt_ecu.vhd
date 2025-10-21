@@ -18,7 +18,7 @@ entity okt_ecu is                       -- Event Capture Unit
 		out_data      : out std_logic_vector(BUFFER_BITS_WIDTH - 1 downto 0);
 		out_rd        : in  std_logic;
 		out_ready     : out std_logic;
-		-- status    : out std_logic_vector(LEDS_BITS_WIDTH - 1 downto 0);
+		status    : out std_logic_vector(LEDS_BITS_WIDTH - 1 downto 0);
 		cmd           : in  std_logic_vector(COMMAND_BIT_WIDTH - 1 downto 0)
 	);
 end okt_ecu;
@@ -36,7 +36,7 @@ architecture Behavioral of okt_ecu is
 	signal ECU_fifo_w_en       : std_logic;
 	signal ECU_fifo_r_data     : std_logic_vector(BUFFER_BITS_WIDTH - 1 downto 0);
 	signal ECU_fifo_r_en       : std_logic;
-	-- signal ECU_fifo_empty  		  : std_logic;
+	signal ECU_fifo_empty  		  : std_logic;
 	signal ECU_fifo_full       : std_logic;
 	-- signal ECU_fifo_almost_full   : std_logic;
 	-- signal ECU_fifo_almost_empty   : std_logic;
@@ -61,7 +61,7 @@ begin
 
 	--ecu_req_n <= req_n;
 	ecu_out_ack_n <= n_ack_n;
-	-- status <= "00000" & ECU_usb_ready & ECU_fifo_empty & ECU_fifo_full;
+	status <= "00000" & ECU_usb_ready & ECU_fifo_empty & ECU_fifo_full;
 	n_command     <= cmd;
 
 	--	caputre_fifo : entity work.okt_fifo
@@ -93,7 +93,7 @@ begin
 			wr_en      => ECU_fifo_w_en,
 			rd_data    => ECU_fifo_r_data,
 			rd_en      => ECU_fifo_r_en,
-			-- empty  => ECU_fifo_empty,
+			empty  => ECU_fifo_empty,
 			full       => ECU_fifo_full,
 			-- full_next => ECU_fifo_almost_full,
 			fill_count => ECU_fifo_fill_count

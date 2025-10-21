@@ -207,23 +207,23 @@ begin
 	leds_status : process(n_command, n_input_sel, epA0_read, ep80_write, n_rst_sw, rst_n)
 	begin
 		if (rst_n = '0') then
-			status <= (others => '1');  -- Set all status led off
+			status <= (others => '0');  -- Set all status led off
 		else
 			-- Default assignment
-        	status <= (others => '1');  -- Set all LEDs off by default
+        	status <= (others => '0');  -- Set all LEDs off by default
 			
 			status(NUM_INPUTS - 1 downto 0) <= not n_input_sel; -- Set input selection led
 
 			if ((n_command and Mask_MON) = Mask_MON) then -- MON command. Send out captured event to USB
-				status(NUM_INPUTS) <= '0'; -- Set MON led
+				status(NUM_INPUTS) <= '1'; -- Set MON led
 			end if;
 
 			if ((n_command and Mask_PASS) = Mask_PASS) then -- PASS command. Send out inputs events through NODE_IN output
-				status(NUM_INPUTS + 1) <= '0'; -- Set PASS led
+				status(NUM_INPUTS + 1) <= '1'; -- Set PASS led
 			end if;
 
-			if ((n_command and Mask_SEQ) = Mask_SEQ) then -- SEQ command. Send out inputs events through NODE_IN output 
-				status(NUM_INPUTS + 2) <= '0'; -- Set SEQ led
+			if ((n_command and Mask_SEQ) = Mask_SEQ) then -- SEQ command. Send out inputs events through NODE_IN output
+				status(NUM_INPUTS + 2) <= '1'; -- Set SEQ led
 			end if;
 
 			if (((n_command and Mask_CONF_1) = Mask_CONF_1) 

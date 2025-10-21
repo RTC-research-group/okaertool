@@ -84,7 +84,7 @@ architecture Behavioral of okt_top is
 
 	--status signals
 	signal status_cu  : std_logic_vector(LEDS_BITS_WIDTH - 1 downto 0);
-	-- signal status_ecu : std_logic_vector(LEDS_BITS_WIDTH - 1 downto 0);
+	signal status_ecu : std_logic_vector(LEDS_BITS_WIDTH - 1 downto 0);
 	-- signal status_osu : std_logic_vector(LEDS_BITS_WIDTH - 1 downto 0);
 
 	signal cmd : std_logic_vector(COMMAND_BIT_WIDTH - 1 downto 0);
@@ -102,7 +102,8 @@ begin
 
 	-- 0 = led on; 1 = led off 
 	-- leds  <= not (status_ecu(2 downto 0) & "000" & status_cu(1 downto 0));
-	leds <= status_cu;
+	leds  <= not status_ecu;
+	-- leds <= not status_cu;
 	rst_n <= rst_ext_n_latch_1 and (not rst_sw);
 	clock <= okClk;
 	rst_sw_n <= not rst_sw;
@@ -233,7 +234,7 @@ begin
 			out_data      => in_ecu_data,
 			out_rd        => in_ecu_rd,
 			out_ready     => in_ecu_ready,
-			-- status        => status_ecu,
+			status        => status_ecu,
 			cmd           => cmd        --Add process depending on cmd PASS or MON
 		);
 
