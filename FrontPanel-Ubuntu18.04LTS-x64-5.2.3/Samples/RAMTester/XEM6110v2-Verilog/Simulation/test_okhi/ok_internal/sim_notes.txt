@@ -1,3 +1,0 @@
-Setup for simulation:
-1. Copy simulation files from frontpanelhdl/Samples/<sample>/<XEM Device> to a working directory ($WORKDIRECTORY).
-2. Copy simulation sources from frontpanelhdl/Sources/(PCI/USB)/Simulation/ to $WORKDIRECTORY/oksim
