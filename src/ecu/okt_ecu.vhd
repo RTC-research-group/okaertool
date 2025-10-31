@@ -128,7 +128,11 @@ begin
 
 		case r_okt_ecu_control_state is
 			when idle =>
-				if (ecu_req_n = '0' and n_command(0) = '1') then
+				if (n_command(0) = '0') then
+					n_timestamp <= (others => '0');
+					n_okt_ecu_control_state <= idle;
+					
+				elsif (ecu_req_n = '0' and n_command(0) = '1') then
 					n_okt_ecu_control_state <= req_fall_0;
 
 				elsif (r_timestamp = TIMESTAMP_OVF and n_command(0) = '1') then
