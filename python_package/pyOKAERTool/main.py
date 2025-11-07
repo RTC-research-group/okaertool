@@ -67,7 +67,11 @@ class Okaertool:
     LOG_LEVEL = logging.INFO
     LOG_FILE = "okaertool.log"
     SPIKE_SIZE_BYTES = 8  # Each spike has a timestamp (4 bytes) and an address (4 bytes)
+    # USB parameters
+    USB_BLOCK_SIZE = 16 * 1024  # Will be updated in init() based on USB speed
     USB_TRANSFER_LENGTH = 1 * 1024 * 1024  # Must be multiple of USB_BLOCK_SIZE
+    MAX_NUM_USB_BUFFERS = 8
+    USB_TRANSFER_TIMEOUT_MS = 500  # Timeout for USB transfers in milliseconds
     
 
     def __init__(self, bit_file=None):
@@ -88,13 +92,10 @@ class Okaertool:
         
         # USB reading thread and double buffer system
         self.usb_read_thread = None
-        self.buffer_queue = Queue(maxsize=2)  # Double buffer using a queue
+        self.buffer_queue = Queue(maxsize=self.MAX_NUM_USB_BUFFERS)
         self.stop_usb_thread = threading.Event()
         self.lock = threading.Lock()
         
-        # USB parameters
-        self.USB_BLOCK_SIZE = 16 * 1024  # Will be updated in init() based on USB speed
-
         # Create a logger
         self.logger = logging.getLogger('Okaertool')
         logging.basicConfig(
@@ -108,19 +109,30 @@ class Okaertool:
         )
 
 
-    def reset_board(self):
+    def reset_board(self, mode='internal'):
         """
         Reset the board using the reset wire.
+        :param mode: Reset mode. Possible values: 'internal' (default), 'external', 'both'
         :return:
         """
-        # Set the value of the reset wire to 1
-        self.device.SetWireInValue(self.INWIRE_RESET_ENDPOINT, 0x00000001)
-        self.device.UpdateWireIns()
-        # Wait a 100 ms and set the reset back to 0
-        time.sleep(0.1)
-        self.device.SetWireInValue(self.INWIRE_RESET_ENDPOINT, 0x00000000)
-        self.device.UpdateWireIns()
-        self.logger.info("Board reset")
+        if mode not in ['internal', 'external', 'both']:
+            self.logger.error(f"Invalid reset mode: {mode}. Possible values: 'internal', 'external', 'both'")
+            return
+        
+        with self.lock:
+            if mode == 'internal':
+                self.device.SetWireInValue(self.INWIRE_RESET_ENDPOINT, 0x00000001)
+            elif mode == 'external':
+                self.device.SetWireInValue(self.INWIRE_RESET_ENDPOINT, 0x00000002)
+            elif mode == 'both':
+                self.device.SetWireInValue(self.INWIRE_RESET_ENDPOINT, 0x00000003)
+
+            self.device.UpdateWireIns()
+            # Wait a 100 ms and set the reset back to 0
+            time.sleep(0.1)
+            self.device.SetWireInValue(self.INWIRE_RESET_ENDPOINT, 0x00000000)
+            self.device.UpdateWireIns()
+        self.logger.info("Board reset in mode: " + mode)
 
 
     def reset_timestamp(self):
@@ -176,7 +188,10 @@ class Okaertool:
             case ok.OK_USBSPEED_UNKNOWN:
                 self.logger.warning("Unknown USB speed. USB block size set to default 64 Bytes")
                 self.USB_BLOCK_SIZE = 64
-                
+        
+        # Set the USB transactions timeout
+        self.device.SetTimeout(self.USB_TRANSFER_TIMEOUT_MS)
+
         # Set the tool to idle mode
         self.__select_command__(['idle'])
         self.logger.info("okaertool initialized as idle")
@@ -205,8 +220,9 @@ class Okaertool:
             self.logger.warning('No inputs defined')
 
         # Set the value of the input wire
-        self.device.SetWireInValue(self.INWIRE_SELINPUT_ENDPOINT, selinput_endpoint_value)
-        self.device.UpdateWireIns()
+        with self.lock:
+            self.device.SetWireInValue(self.INWIRE_SELINPUT_ENDPOINT, selinput_endpoint_value)
+            self.device.UpdateWireIns()
 
 
     def __select_command__(self, command=[]):
@@ -249,8 +265,62 @@ class Okaertool:
         self.logger.debug(f'Value of command selection: {command_endpoint_value}')
 
         # Set the value of the command wire
-        self.device.SetWireInValue(self.INWIRE_COMMAND_ENDPOINT, command_endpoint_value)
-        self.device.UpdateWireIns()
+        with self.lock:
+            self.device.SetWireInValue(self.INWIRE_COMMAND_ENDPOINT, command_endpoint_value)
+            self.device.UpdateWireIns()
+
+
+    def _process_buffer(self, buffer, spikes):
+        """
+        Process a buffer and extract spikes (timestamps and addresses).
+        
+        :param buffer: Buffer containing raw spike data
+        :param spikes: List of Spikes objects to populate
+        """
+        # Convert to numpy array
+        data = np.frombuffer(buffer, dtype=np.uint32)
+        
+        if len(data) < 2:
+            return
+        
+        # Process events in pairs (timestamp, address)
+        num_pairs = len(data) // 2
+        
+        # Process each pair
+        for pair_idx in range(num_pairs):
+            byte_idx = pair_idx * 2
+            
+            # Skip first pair
+            if byte_idx == 0:
+                continue
+            
+            # Extract timestamp and address
+            ts = int(data[byte_idx])
+            addr = int(data[byte_idx + 1])
+            
+            # Skip null events
+            if ts == 0 or addr == 0:
+                continue
+            
+            # Validate address
+            if (addr & 0x3FFFFFFF) > 256:
+                continue
+            
+            # Handle timestamp overflow
+            if ts == 0xFFFFFFFF:
+                self.global_timestamp += ts
+                continue
+            
+            # Extract input index
+            input_idx = (addr & 0xC000_0000) >> 30
+            
+            # Save spike with absolute timestamp
+            absolute_ts = self.global_timestamp + ts
+            spikes[input_idx].timestamps.append(absolute_ts)
+            spikes[input_idx].addresses.append(addr & 0x3FFFFFFF)
+            
+            # Update global_timestamp by the delta
+            self.global_timestamp += ts
 
 
     def _usb_reader_thread(self, buffer_size):
@@ -265,12 +335,14 @@ class Okaertool:
             # Allocate a new buffer for this read
             buffer = bytearray(buffer_size)
             
-            # Blocking read from USB
-            num_read_bytes = self.device.ReadFromBlockPipeOut(
-                self.OUTPIPE_ENDPOINT, 
-                self.USB_BLOCK_SIZE, 
-                buffer
-            )
+            # CRITICAL: Lock device access before USB read
+            with self.lock:
+                # Blocking read from USB
+                num_read_bytes = self.device.ReadFromBlockPipeOut(
+                    self.OUTPIPE_ENDPOINT, 
+                    self.USB_BLOCK_SIZE, 
+                    buffer
+                )
             
             if num_read_bytes < 0:
                 self.logger.warning(f'USB read error: {ok.okCFrontPanel_GetErrorString(num_read_bytes)}')
@@ -287,47 +359,6 @@ class Okaertool:
         
         self.logger.debug("USB reader thread stopped")
 
-
-    def _process_buffer(self, buffer, spikes):
-        """
-        Process a buffer and extract spikes (timestamps and addresses).
-        
-        :param buffer: Buffer containing raw spike data
-        :param spikes: List of Spikes objects to populate
-        """
-        for b_idx in range(0, len(buffer), self.SPIKE_SIZE_BYTES):
-            if b_idx + self.SPIKE_SIZE_BYTES > len(buffer):
-                break
-            elif b_idx == 0:
-                continue  # Skip potential incomplete spike at start
-                
-            ts = int.from_bytes(buffer[b_idx:b_idx+4], byteorder='little', signed=False)
-            addr = int.from_bytes(buffer[b_idx+4:b_idx+8], byteorder='little', signed=False)
-            
-            # Skip null events
-            if ts == 0 or addr == 0:
-                # self.logger.warning(f'Null event skipped')
-                continue
-            
-            # Validate address. TODO: This check must not be here in the final version. Invalid addresses should not be sent by the FPGA.
-            if (addr & 0x3FFFFFFF) > 256:
-                self.logger.warning(f'Invalid address event at address {addr}')
-                continue
-
-            # Handle timestamp overflow
-            if ts == 0xFFFFFFFF:
-                self.logger.warning(f'Timestamp overflow event at address {addr}')
-                self.global_timestamp += ts
-                continue
-            
-            # Get the input index that is encoded in the 2 most significant bits.
-            input_idx = (addr & 0xC000_0000) >> 30
-            # Save the global timestamp and the address in the spike list corresponding with the input
-            spikes[input_idx].timestamps.append(self.global_timestamp + ts)
-            spikes[input_idx].addresses.append(addr & 0x3FFFFFFF) # Remove the input index from the address
-            
-            # Update global timestamp
-            self.global_timestamp += ts
 
     def monitor(self, inputs=[], duration=None, max_spikes=None, live=False):
         """
@@ -361,13 +392,23 @@ class Okaertool:
             self.logger.error('Only one monitoring mode can be selected: duration, max_spikes, or live')
             return None
         
-        # Select inputs
-        self.__select_inputs__(inputs=inputs)
+        # CRITICAL: Stop any previous monitoring session
+        if self.is_monitoring:
+            self.logger.warning('Previous monitoring session active, stopping it')
+            self.stop_monitor()
+            time.sleep(0.2)  # Give time for cleanup
         
+        # CRITICAL: Wait for previous USB thread to finish
+        if self.usb_read_thread and self.usb_read_thread.is_alive():
+            self.logger.warning('Waiting for previous USB thread to finish')
+            self.stop_usb_thread.set()
+            self.usb_read_thread.join(timeout=3.0)
+            if self.usb_read_thread.is_alive():
+                self.logger.error('Previous USB thread did not stop!')
+                return None
+
         # Initialize spikes storage
         spikes = [Spikes(addresses=[], timestamps=[]) for _ in range(self.NUM_INPUTS)]
-        
-        self.logger.info(f'USB buffer size: {self.USB_TRANSFER_LENGTH / (1024 * 1024):.2f} MB')
         
         # Clear the buffer queue
         while not self.buffer_queue.empty():
@@ -377,7 +418,10 @@ class Okaertool:
                 break
         
         # Reset global timestamp
-        self.reset_timestamp
+        # self.reset_board(mode='internal')
+        self.reset_timestamp()
+        # Select inputs
+        self.__select_inputs__(inputs=inputs)
         # Enable monitoring on FPGA
         self.__select_command__(['monitor'])
 
@@ -391,76 +435,108 @@ class Okaertool:
         )
         self.usb_read_thread.start()
         
+        self.logger.info(f'Starting monitoring - USB buffer: {self.USB_TRANSFER_LENGTH / (1024 * 1024):.2f} MB')
+        
+        # For live mode, return immediately (thread continues running)
+        if live:
+            self.logger.info('Live monitoring started')
+            return None
+
         # Start timing
         start_time = time.time()
         total_spikes = 0
+        buffer_count = 0
         
         try:
             # Main processing loop
             while self.is_monitoring and not live:
-                # Check stopping conditions BEFORE waiting for data
-                if duration is not None:
-                    elapsed = time.time() - start_time
-                    if elapsed >= duration:
-                        self.logger.info(f'Duration limit reached: {elapsed:.2f} seconds')
-                        break
-                
-                # Get buffer from queue (with timeout to allow checking stop condition)
                 try:
                     buffer = self.buffer_queue.get(timeout=2.0)
-                except:
-                    # Timeout - check if we should continue
-                    if self.usb_read_thread.is_alive():
-                        self.logger.warning("No data received in timeout period 2.0 seconds")
+                    buffer_count += 1
+                    
+                    # Process buffer
+                    self._process_buffer(buffer, spikes)
+                    
+                    # Log progress every 50 buffers
+                    if buffer_count % 50 == 0:
+                        total_spikes = sum(len(s.timestamps) for s in spikes)
+                        elapsed = time.time() - start_time
+                        rate = total_spikes / elapsed if elapsed > 0 else 0
+                        self.logger.debug(
+                            f'Processed {buffer_count} buffers, {total_spikes} spikes, '
+                            f'{rate:.0f} spikes/sec, global_ts: {self.global_timestamp}'
+                        )
+                    
+                    # Check stopping conditions
+                    if duration is not None:
+                        elapsed = time.time() - start_time
+                        if elapsed >= duration:
+                            self.logger.info(f'Duration limit reached: {elapsed:.2f} seconds')
+                            break
+                    
+                    if max_spikes is not None:
+                        total_spikes = sum(len(s.timestamps) for s in spikes)
+                        if total_spikes >= max_spikes:
+                            self.logger.info(f'Spike limit reached: {total_spikes} spikes')
+                            break
+                            
+                except Exception as e:
+                    if self.usb_read_thread and self.usb_read_thread.is_alive():
+                        self.logger.warning(f"Timeout or error getting buffer: {e}")
                         continue
                     else:
-                        self.logger.info("USB reader thread has stopped")
-                        break
-                
-                # Process the buffer
-                self._process_buffer(buffer, spikes)
-                total_spikes = sum(len(s.timestamps) for s in spikes)
-                
-                # Check max_spikes condition
-                if max_spikes is not None:
-                    if total_spikes >= max_spikes:
-                        self.logger.info(f'Spike limit reached: {total_spikes} spikes')
-                        # Trim to exact number if needed
-                        remaining = max_spikes
-                        for i in range(self.NUM_INPUTS):
-                            if remaining <= 0:
-                                spikes[i].timestamps = []
-                                spikes[i].addresses = []
-                            elif len(spikes[i].timestamps) > remaining:
-                                spikes[i].timestamps = spikes[i].timestamps[:remaining]
-                                spikes[i].addresses = spikes[i].addresses[:remaining]
-                                remaining = 0
-                            else:
-                                remaining -= len(spikes[i].timestamps)
+                        self.logger.info("USB reader thread stopped")
                         break
                 
                 # In live mode, continue until stop_monitor() is called
         
         finally:
-            # Stop monitoring
-            if not live or not self.is_monitoring:
-                self.is_monitoring = False
-                self.stop_usb_thread.set()
-                self.__select_command__(['idle'])
-                
-                # Wait for USB thread to finish
-                if self.usb_read_thread and self.usb_read_thread.is_alive():
-                    self.usb_read_thread.join(timeout=2.0)
-                
-                # Log statistics
-                elapsed = time.time() - start_time
-                self.logger.info(f'Monitoring completed: {elapsed:.2f} seconds, {total_spikes} spikes captured')
+            # Stop monitoring (only for non-live modes)
+            self.logger.debug('Cleaning up monitoring session')
+            self.is_monitoring = False
+            self.stop_usb_thread.set()
+            self.__select_command__(['idle'])
+            
+            # Wait for USB thread to finish
+            if self.usb_read_thread and self.usb_read_thread.is_alive():
+                self.usb_read_thread.join(timeout=2.0)
+                if self.usb_read_thread.is_alive():
+                    self.logger.warning("USB thread did not stop cleanly")
+            
+            # Process any remaining buffers
+            while not self.buffer_queue.empty():
+                try:
+                    buffer = self.buffer_queue.get_nowait()
+                    self._process_buffer(buffer, spikes)
+                except:
+                    break
+            
+            # Log statistics
+            total_spikes = sum(len(s.timestamps) for s in spikes)
+            elapsed = time.time() - start_time
+            self.logger.info(f'Monitoring completed: {elapsed:.2f} seconds, {total_spikes} spikes captured')
         
-        # Return results (None for live mode, spikes for other modes)
-        if live:
-            return None
-        else:
-            return spikes
+        return spikes
+        #     # Stop monitoring
+        #     if not live or not self.is_monitoring:
+        #         self.is_monitoring = False
+        #         self.stop_usb_thread.set()
+        #         self.__select_command__(['idle'])
+                
+        #         # Wait for USB thread to finish
+        #         if self.usb_read_thread and self.usb_read_thread.is_alive():
+        #             self.logger.debug("Waiting for USB thread to finish")
+        #             self.usb_read_thread.join()
+                
+        #         # Log statistics
+        #         elapsed = time.time() - start_time
+        #         self.logger.info(f'Monitoring completed: {elapsed:.2f} seconds, {total_spikes} spikes captured')
+        
+        # # Return results (None for live mode, spikes for other modes)
+        # if live:
+        #     return None
+        # else:
+        #     return spikes
         
 
     def get_live_spikes(self):
@@ -483,6 +559,7 @@ class Okaertool:
                 buffer = self.buffer_queue.get_nowait()
                 self._process_buffer(buffer, spikes)
             except:
+                self.logger.debug("No more buffers to process")
                 break
         
         return spikes if sum(len(s.timestamps) for s in spikes) > 0 else None
@@ -500,13 +577,20 @@ class Okaertool:
         
         self.logger.info('Stopping live monitor')
         
+        
         # Signal stop
         self.is_monitoring = False
         self.stop_usb_thread.set()
         
+        # Disable FPGA monitoring
+        self.__select_command__(['idle'])
+        
         # Wait for USB thread to finish
         if self.usb_read_thread and self.usb_read_thread.is_alive():
+            self.logger.debug("Waiting for USB thread to finish")
             self.usb_read_thread.join(timeout=2.0)
+            if self.usb_read_thread.is_alive():
+                self.logger.warning("USB thread did not stop cleanly")
         
         # Process any remaining buffers
         spikes = [Spikes(addresses=[], timestamps=[]) for _ in range(self.NUM_INPUTS)]
@@ -516,9 +600,6 @@ class Okaertool:
                 self._process_buffer(buffer, spikes)
             except:
                 break
-        
-        # Disable FPGA monitoring
-        self.__select_command__(['idle'])
         
         total_spikes = sum(len(s.timestamps) for s in spikes)
         self.logger.info(f'Live monitoring stopped: {total_spikes} spikes captured')
@@ -540,6 +621,7 @@ class Okaertool:
 
     def sequencer(self, file):
         """
+        TODO: Implement sequencer mode in a thread.
         MODE SEQUENCER: A file is selected to be sequenced over NODE_IN output in a lone transfer.
         :param file: numpy or txt file that contains binary data for sequencer
         :return:
@@ -570,8 +652,9 @@ class Okaertool:
         value = register_value & 0xFFFF
         address_value = address | value
         # Set the value of the config register
-        self.device.SetWireInValue(self.INWIRE_CONFIG_ENDPOINT, address_value)
-        self.device.UpdateWireIns()
+        with self.lock:
+            self.device.SetWireInValue(self.INWIRE_CONFIG_ENDPOINT, address_value)
+            self.device.UpdateWireIns()
         # Set the command to configure the device
         if device == 'port_a':
             self.__select_command__(['config_port_a'])
@@ -589,8 +672,9 @@ class Okaertool:
         # Wait 10ms to ensure that the register is set
         # time.sleep(0.01)
         # Set the value of the register to zero
-        self.device.SetWireInValue(self.INWIRE_CONFIG_ENDPOINT, 0x00000000)
-        self.device.UpdateWireIns()
+        with self.lock:
+            self.device.SetWireInValue(self.INWIRE_CONFIG_ENDPOINT, 0x00000000)
+            self.device.UpdateWireIns()
         self.logger.info(f'Configuring {device} with address {hex(register_address)} and value {hex(register_value)}')
         return 0
 
