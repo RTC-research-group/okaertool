@@ -42,7 +42,8 @@ architecture Behavioral of okt_imu is
 	signal r_okt_control_state, n_okt_control_state : state;
 
 	-- DEBUG
-	attribute MARK_DEBUG : string; attribute MARK_DEBUG of rst_n, in0_data, in0_req_n, in0_ack_n, in1_data, in1_req_n, in1_ack_n, 
+	attribute MARK_DEBUG : string; 
+	attribute MARK_DEBUG of rst_n, in0_data, in0_req_n, in0_ack_n, in1_data, in1_req_n, in1_ack_n, 
 												in2_data, in2_req_n, in2_ack_n, input_select, out_data, out_req_n, ecu_node_in_ack_n, 
 												n_out_req_n, n_out_ack_n, n_out_data, r_okt_control_state, n_okt_control_state : signal is "TRUE";
 

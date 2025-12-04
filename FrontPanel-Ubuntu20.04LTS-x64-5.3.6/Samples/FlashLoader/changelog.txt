@@ -1,6 +1,0 @@
-This file contains changes to the flashloader sample provided with FrontPanel.
-------------------------------------------------------------------------------
-FrontPanel 5.2.7
-    - Added flash read functionality
-    - Fixed issue in HDL where an extra flash sector would be erased
-    - Fixed issue where last sector transfer would contain old data

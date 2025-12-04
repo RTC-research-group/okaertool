@@ -71,13 +71,27 @@ architecture Behavioral of okt_osu is
 
 	--Sys signals
 	signal n_command      : std_logic_vector(COMMAND_BIT_WIDTH - 1 downto 0);
-	signal ecu_node_ack_n : std_logic := '1'; --Latched signal
+--	signal ecu_node_ack_n : std_logic := '1'; --Latched signal
+	signal ecu_node_ack_n : std_logic; --Latched signal
 
 	signal out_req            : std_logic := '1'; --output request
 	signal out_ack            : std_logic := '1'; --output ack
 	signal aer_data, limit_ts : std_logic_vector(BUFFER_BITS_WIDTH - 1 downto 0);
 
 	signal rise_timestamp, next_timestamp                   : std_logic_vector(TIMESTAMP_BITS_WIDTH - 1 downto 0);
+	
+	-- Pipelined timestamp comparison signals (Stage 1: registered data from FIFO)
+	signal limit_ts_reg       : std_logic_vector(TIMESTAMP_BITS_WIDTH - 1 downto 0);
+	signal limit_ts_is_ovf    : std_logic; -- Pre-calculated: limit_ts == 0xFFFFFFFF
+	signal limit_ts_is_zero   : std_logic; -- Pre-calculated: limit_ts == 0
+	
+	-- Pipelined timestamp comparison signals (Stage 2: registered comparisons)
+	signal limit_ts_minus_2   : std_logic_vector(TIMESTAMP_BITS_WIDTH - 1 downto 0);
+	signal timestamp_plus_2   : std_logic_vector(TIMESTAMP_BITS_WIDTH - 1 downto 0);
+	signal comp_ts_gt_limit   : std_logic;
+	signal comp_ts_near_limit : std_logic;
+	signal ovf_limit_minus_2  : std_logic_vector(TIMESTAMP_BITS_WIDTH - 1 downto 0);
+	signal comp_ts_gt_ovf     : std_logic;
 	type state is (idle, timestamp_check, wait_ack_rise, data_trigger_0, data_trigger_1, data_trigger_2, wait_ovf);
 	signal r_okt_osu_control_state, n_okt_osu_control_state : state;
 
@@ -181,13 +195,25 @@ begin
 	--ACK Latch for bypass and monitor commands
 	--------------------------------------------------------------------------------------------------------------------
 	-- ACK_Latch: Latches ACK signals so that a new message is sent only after having received both acks. No timeout for the moment.
-	ACK_latch : process(ecu_in_ack_n, node_in_osu_ack_n)
+--	ACK_latch : process(ecu_in_ack_n, node_in_osu_ack_n)
+--	begin
+--		if ecu_in_ack_n = '0' and node_in_osu_ack_n = '0' then
+--			ecu_node_ack_n <= '0';
+--		elsif ecu_in_ack_n = '1' and node_in_osu_ack_n = '1' then
+--			ecu_node_ack_n <= '1';
+--		end if;
+--	end process;
+	ACK_latch : process(clk, rst_n)
 	begin
-		if ecu_in_ack_n = '0' and node_in_osu_ack_n = '0' then
-			ecu_node_ack_n <= '0';
-		elsif ecu_in_ack_n = '1' and node_in_osu_ack_n = '1' then
-			ecu_node_ack_n <= '1';
-		end if;
+		 if rst_n = '0' then
+			  ecu_node_ack_n <= '1';
+		 elsif rising_edge(clk) then
+			  if ecu_in_ack_n = '0' and node_in_osu_ack_n = '0' then
+					ecu_node_ack_n <= '0';
+			  elsif ecu_in_ack_n = '1' and node_in_osu_ack_n = '1' then
+					ecu_node_ack_n <= '1';
+			  end if;
+		 end if;
 	end process;
 
 	--------------------------------------------------------------------------------------------------------------------
@@ -207,10 +233,74 @@ begin
 	end process signals_update;
 
 	--------------------------------------------------------------------------------------------------------------------
+	-- Pipelined timestamp comparison (2-stage pipeline para romper camino crítico)
+	--------------------------------------------------------------------------------------------------------------------
+	timestamp_pipeline : process(clk, rst_n)
+	begin
+		if rst_n = '0' then
+			-- Stage 1: FIFO data registration
+			limit_ts_reg       <= (others => '0');
+			limit_ts_is_ovf    <= '0';
+			limit_ts_is_zero   <= '1';
+			-- Stage 2: Arithmetic and comparisons
+			limit_ts_minus_2   <= (others => '0');
+			timestamp_plus_2   <= (others => '0');
+			comp_ts_gt_limit   <= '0';
+			comp_ts_near_limit <= '0';
+			ovf_limit_minus_2  <= (others => '0');
+			comp_ts_gt_ovf     <= '0';
+		elsif rising_edge(clk) then
+			-- === PIPELINE STAGE 1: Register FIFO data ONLY (no comparisons) ===
+			-- Break the critical path from BRAM by only registering the data
+			limit_ts_reg <= fifo_r_data(TIMESTAMP_BITS_WIDTH - 1 downto 0);
+			
+			-- === PIPELINE STAGE 2: Pre-decode special values on REGISTERED data ===
+			-- Now the comparisons operate on limit_ts_reg instead of fifo_r_data
+			if limit_ts_reg = x"FFFFFFFF" then
+				limit_ts_is_ovf <= '1';
+			else
+				limit_ts_is_ovf <= '0';
+			end if;
+			
+			if limit_ts_reg = x"00000000" then
+				limit_ts_is_zero <= '1';
+			else
+				limit_ts_is_zero <= '0';
+			end if;
+			
+			-- === PIPELINE STAGE 2: Arithmetic operations on registered data ===
+			limit_ts_minus_2   <= limit_ts_reg - 2;
+			timestamp_plus_2   <= rise_timestamp + 2;
+			ovf_limit_minus_2  <= TIMESTAMP_OVF - 2;
+			
+			-- Registered comparisons for timestamp_check state
+			if rise_timestamp > limit_ts_minus_2 then
+				comp_ts_gt_limit <= '1';
+			else
+				comp_ts_gt_limit <= '0';
+			end if;
+			
+			if timestamp_plus_2 > limit_ts_reg then
+				comp_ts_near_limit <= '1';
+			else
+				comp_ts_near_limit <= '0';
+			end if;
+			
+			-- Registered comparison for wait_ovf state
+			if rise_timestamp > ovf_limit_minus_2 then
+				comp_ts_gt_ovf <= '1';
+			else
+				comp_ts_gt_ovf <= '0';
+			end if;
+		end if;
+	end process timestamp_pipeline;
+
+	--------------------------------------------------------------------------------------------------------------------
 	--FSM sequencer code. Beta VER.
 	--------------------------------------------------------------------------------------------------------------------
 	-- Take data from FIFO - REVISAR
-	output_sequencer : process(r_okt_osu_control_state, out_ack, n_command, fifo_empty, rise_timestamp, fifo_r_data, limit_ts)
+	-- NOTA: Usa SOLO señales registradas (limit_ts_is_ovf, limit_ts_is_zero, comp_*) para eliminar caminos combinacionales
+	output_sequencer : process(r_okt_osu_control_state, out_ack, n_command, fifo_empty, rise_timestamp, fifo_r_data, limit_ts_is_ovf, limit_ts_is_zero, comp_ts_gt_limit, comp_ts_near_limit, comp_ts_gt_ovf)
 	begin
 		n_okt_osu_control_state <= r_okt_osu_control_state;
 		next_timestamp          <= rise_timestamp + 1;
@@ -228,11 +318,15 @@ begin
 				end if;
 
 			when timestamp_check =>
+				-- Pass through for data_trigger states (needed for aer_data assignment)
 				limit_ts <= fifo_r_data(BUFFER_BITS_WIDTH - 1 downto 0);
-				if (limit_ts = x"FFFFFFFF") then
+				
+				-- Use pre-calculated registered flags (NO combinational logic on limit_ts)
+				if (limit_ts_is_ovf = '1') then
 					fifo_r_en               <= '1';
 					n_okt_osu_control_state <= wait_ovf;
-				elsif (limit_ts > 0 and (rise_timestamp > limit_ts - 2 or rise_timestamp + 2 > limit_ts)) then
+				-- Use registered comparisons (limit_ts_is_zero is inverse of "limit_ts > 0")
+				elsif (limit_ts_is_zero = '0' and (comp_ts_gt_limit = '1' or comp_ts_near_limit = '1')) then
 					fifo_r_en               <= '1';
 					n_okt_osu_control_state <= data_trigger_0;
 					next_timestamp          <= (others => '0');
@@ -260,8 +354,11 @@ begin
 				end if;
 
 			when wait_ovf =>
+				-- Pass through TIMESTAMP_OVF for external visibility (not used in logic)
 				limit_ts(TIMESTAMP_BITS_WIDTH - 1 downto 0) <= TIMESTAMP_OVF;
-				if (limit_ts > 0 and rise_timestamp > limit_ts - 2) then
+				
+				-- Use ONLY registered comparison signal (NO combinational "limit_ts > 0")
+				if (comp_ts_gt_ovf = '1') then
 					aer_data                <= (others => '0');
 					fifo_r_en               <= '1';
 					n_okt_osu_control_state <= idle;

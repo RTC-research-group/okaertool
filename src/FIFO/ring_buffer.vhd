@@ -60,9 +60,11 @@ architecture rtl of ring_buffer is
   signal head : index_type;
   signal tail : index_type;
  
-  signal empty_i : std_logic;
-  signal full_i : std_logic;
-  signal fill_count_i : integer range RAM_DEPTH - 1 downto 0;
+  signal empty_i, empty_i_next : std_logic;
+  signal full_i, full_i_next : std_logic;
+  signal empty_next_i, empty_next_i_next : std_logic;
+  signal full_next_i, full_next_i_next : std_logic;
+  signal fill_count_i, fill_count_next : integer range RAM_DEPTH - 1 downto 0;
  
   -- Increment and wrap
   procedure incr(signal index : inout index_type) is
@@ -76,16 +78,39 @@ architecture rtl of ring_buffer is
  
 begin
  
-  -- Copy internal signals to output
+  -- Copy internal signals to output (registered)
   empty <= empty_i;
   full <= full_i;
   fill_count <= fill_count_i;
- 
-  -- Set the flags
-  empty_i <= '1' when fill_count_i = 0 else '0';
-  empty_next <= '1' when fill_count_i <= FIFO_ALM_EMPTY_OFFSET else '0';
-  full_i <= '1' when fill_count_i >= RAM_DEPTH - 1 else '0';
-  full_next <= '1' when fill_count_i >= RAM_DEPTH - FIFO_ALM_FULL_OFFSET else '0';
+  empty_next <= empty_next_i;
+  full_next <= full_next_i;
+
+  -- Combinational next-state logic for fill_count and flags
+  fill_count_next <= head - tail + RAM_DEPTH when head < tail else head - tail;
+  empty_i_next    <= '1' when fill_count_next = 0 else '0';
+  empty_next_i_next <= '1' when fill_count_next <= FIFO_ALM_EMPTY_OFFSET else '0';
+  full_i_next     <= '1' when fill_count_next >= RAM_DEPTH - 1 else '0';
+  full_next_i_next <= '1' when fill_count_next >= RAM_DEPTH - FIFO_ALM_FULL_OFFSET else '0';
+
+  -- Register fill_count and flags to break critical path
+  PROC_FLAGS: process(clk)
+  begin
+    if rising_edge(clk) then
+      if rst = '0' then
+        fill_count_i   <= 0;
+        empty_i        <= '1';
+        empty_next_i   <= '1';
+        full_i         <= '0';
+        full_next_i    <= '0';
+      else
+        fill_count_i   <= fill_count_next;
+        empty_i        <= empty_i_next;
+        empty_next_i   <= empty_next_i_next;
+        full_i         <= full_i_next;
+        full_next_i    <= full_next_i_next;
+      end if;
+    end if;
+  end process;
  
   -- Update the head pointer in write
   PROC_HEAD : process(clk)
@@ -132,14 +157,7 @@ begin
   end process;
  
   -- Update the fill count
-  PROC_COUNT : process(head, tail)
-  begin
-    if head < tail then
-      fill_count_i <= head - tail + RAM_DEPTH;
-    else
-      fill_count_i <= head - tail;
-    end if;
-  end process;
+  -- (Eliminado: ahora el cálculo y registro de fill_count está en PROC_FLAGS)
  
 end architecture;
 

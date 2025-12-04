@@ -1,6 +1,0 @@
-#!/bin/sh
-bindir="$(dirname $(readlink -f $0))"
-echo $bindir
-LD_LIBRARY_PATH=$bindir/../lib:$LD_LIBRARY_PATH
-exec $bindir/FrontPanel.bin
-

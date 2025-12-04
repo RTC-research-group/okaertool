@@ -31,6 +31,14 @@ architecture Behavioral of okt_ecu is
 	signal r_timestamp, n_timestamp : std_logic_vector(TIMESTAMP_BITS_WIDTH - 1 downto 0);
 	--signal ecu_req_n                : std_logic;
 	signal n_ack_n                  : std_logic;
+	
+	-- Pipelined timestamp signals (2-stage pipeline to break critical path)
+	-- Stage 1: Registered timestamp and pre-decoded flags
+	signal r_timestamp_reg     : std_logic_vector(TIMESTAMP_BITS_WIDTH - 1 downto 0);
+	signal r_timestamp_is_ovf  : std_logic; -- Pre-calculated: r_timestamp = TIMESTAMP_OVF
+	
+	-- Stage 2: Registered arithmetic operations
+	signal r_timestamp_plus_1  : std_logic_vector(TIMESTAMP_BITS_WIDTH - 1 downto 0);
 
 	signal ECU_fifo_w_data     : std_logic_vector(BUFFER_BITS_WIDTH - 1 downto 0);
 	signal ECU_fifo_w_en       : std_logic;
@@ -116,27 +124,65 @@ begin
 		end if;
 
 	end process signals_update;
+	
+	--------------------------------------------------------------------------------------------------------------------
+	-- Pipelined timestamp operations (2-stage pipeline to break critical path)
+	--------------------------------------------------------------------------------------------------------------------
+	timestamp_pipeline : process(clk, rst_n)
+	begin
+		if rst_n = '0' then
+			-- Stage 1: Timestamp registration
+			r_timestamp_reg    <= (others => '0');
+			r_timestamp_is_ovf <= '0';
+			-- Stage 2: Arithmetic operations
+			r_timestamp_plus_1 <= (others => '0');
+		elsif rising_edge(clk) then
+			-- === PIPELINE STAGE 1: Register timestamp and pre-decode overflow flag ===
+			r_timestamp_reg <= r_timestamp;
+			
+			-- Pre-calculate overflow check (combinational → register)
+			if r_timestamp = TIMESTAMP_OVF then
+				r_timestamp_is_ovf <= '1';
+			else
+				r_timestamp_is_ovf <= '0';
+			end if;
+			
+			-- === PIPELINE STAGE 2: Arithmetic operation on registered data ===
+			r_timestamp_plus_1 <= r_timestamp_reg + 1;
+		end if;
+	end process timestamp_pipeline;
 
 	-- input monitor: Stores data in fifo
-	input_monitor : process(r_okt_ecu_control_state, ecu_req_n, r_timestamp, aer_data, ECU_fifo_full, n_command)
+	-- MODIFIED: Using pipelined signals to eliminate critical path
+	input_monitor : process(r_okt_ecu_control_state, ecu_req_n, r_timestamp, aer_data, ECU_fifo_full, n_command, r_timestamp_is_ovf, r_timestamp_plus_1)
 	begin
 		n_okt_ecu_control_state <= r_okt_ecu_control_state;
-		n_timestamp             <= r_timestamp + 1;
+		-- ORIGINAL (combinational path): n_timestamp <= r_timestamp + 1;
+		-- NEW (registered arithmetic): Use pre-calculated r_timestamp_plus_1
+		n_timestamp             <= r_timestamp_plus_1;
 		n_ack_n                 <= '1';
 		ECU_fifo_w_data         <= (others => '0');
 		ECU_fifo_w_en           <= '0';
 
 		case r_okt_ecu_control_state is
 			when idle =>
-				if (ecu_req_n = '0' and n_command(0) = '1') then
+				if (n_command(0) = '0') then
+					n_timestamp <= (others => '0');
+					n_okt_ecu_control_state <= idle;
+
+				elsif (ecu_req_n = '0' and n_command(0) = '1') then
 					n_okt_ecu_control_state <= req_fall_0;
 
-				elsif (r_timestamp = TIMESTAMP_OVF and n_command(0) = '1') then
+				-- ORIGINAL (combinational comparison): elsif (r_timestamp = TIMESTAMP_OVF and n_command(0) = '1') then
+				-- NEW (registered flag): Use pre-calculated r_timestamp_is_ovf
+				elsif (r_timestamp_is_ovf = '1' and n_command(0) = '1') then
 					n_okt_ecu_control_state <= timestamp_overflow_0;
 				end if;
 
 			when req_fall_0 =>
-				if (r_timestamp = TIMESTAMP_OVF) then
+				-- ORIGINAL (combinational comparison): if (r_timestamp = TIMESTAMP_OVF) then
+				-- NEW (registered flag): Use pre-calculated r_timestamp_is_ovf
+				if (r_timestamp_is_ovf = '1') then
 					n_okt_ecu_control_state <= timestamp_overflow_0;
 
 				elsif (ECU_fifo_full = '0') then
@@ -180,11 +226,11 @@ begin
 	end process;
 
 	control_ECU_usb_ready : process(clk, rst_n) is
-		variable usb_burst : integer range 0 to USB_BURST_WORDS;
+		-- variable usb_burst : integer range 0 to USB_BURST_WORDS;
 	begin
 		if rst_n = '0' then
 			ECU_usb_ready         <= '0';
-			usb_burst             := 0;
+			-- usb_burst             := 0;
 			ECU_fifo_r_en_end     <= '0';
 			ECU_fifo_r_en_latched <= '0';
 
@@ -197,14 +243,19 @@ begin
 				ECU_fifo_r_en_end <= '0';
 			end if;
 
+			-- if ECU_fifo_fill_count > FIFO_ALM_EMPTY_OFFSET then
+			-- 	ECU_usb_ready <= '1';
+			-- 	usb_burst     := USB_BURST_WORDS;
+			-- elsif ECU_usb_ready = '1' then
+			-- 	usb_burst := usb_burst - 1;
+			-- 	if usb_burst = 0 or ECU_fifo_r_en_end = '1' then
+			-- 		ECU_usb_ready <= '0';
+			-- 	end if;
+			-- end if;
 			if ECU_fifo_fill_count > FIFO_ALM_EMPTY_OFFSET then
 				ECU_usb_ready <= '1';
-				usb_burst     := USB_BURST_WORDS;
-			elsif ECU_usb_ready = '1' then
-				usb_burst := usb_burst - 1;
-				if usb_burst = 0 or ECU_fifo_r_en_end = '1' then
-					ECU_usb_ready <= '0';
-				end if;
+			else
+				ECU_usb_ready <= '0';
 			end if;
 		end if;
 	end process;
