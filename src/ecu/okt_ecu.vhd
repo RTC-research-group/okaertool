@@ -34,7 +34,7 @@ architecture Behavioral of okt_ecu is
 	
 	-- Pipelined timestamp signals (2-stage pipeline to break critical path)
 	-- Stage 1: Registered timestamp and pre-decoded flags
-	signal r_timestamp_reg     : std_logic_vector(TIMESTAMP_BITS_WIDTH - 1 downto 0);
+	-- signal r_timestamp_reg     : std_logic_vector(TIMESTAMP_BITS_WIDTH - 1 downto 0);
 	signal r_timestamp_is_ovf  : std_logic; -- Pre-calculated: r_timestamp = TIMESTAMP_OVF
 	
 	-- Stage 2: Registered arithmetic operations
@@ -72,23 +72,6 @@ begin
 	status <= "00000" & ECU_usb_ready & ECU_fifo_empty & ECU_fifo_full;
 	n_command     <= cmd;
 
-	--	caputre_fifo : entity work.okt_fifo
-	--		generic map(
-	--			DEPTH => FIFO_DEPTH
-	--		)
-	--		port map(
-	--			clk    => clk,
-	--			rst_n  => rst_n,
-	--			w_data => ECU_fifo_w_data,
-	--			w_en   => ECU_fifo_w_en,
-	--			r_data => ECU_fifo_r_data,
-	--			r_en   => ECU_fifo_r_en,
-	--			empty  => ECU_fifo_empty,
-	--			full   => ECU_fifo_full,
-	--			almost_full => ECU_fifo_almost_full,
-	--			almost_empty => ECU_fifo_almost_empty
-	--		);
-
 	ring_buffer : entity work.ring_buffer
 		generic map(
 			RAM_DEPTH => FIFO_DEPTH,
@@ -111,19 +94,6 @@ begin
 	out_data      <= ECU_fifo_r_data;
 	ECU_fifo_r_en <= out_rd;
 	out_ready     <= ECU_usb_ready;
-
-	signals_update : process(clk, rst_n)
-	begin
-		if rst_n = '0' then
-			r_okt_ecu_control_state <= idle;
-			r_timestamp             <= (others => '0');
-
-		elsif rising_edge(clk) then
-			r_okt_ecu_control_state <= n_okt_ecu_control_state;
-			r_timestamp             <= n_timestamp;
-		end if;
-
-	end process signals_update;
 	
 	--------------------------------------------------------------------------------------------------------------------
 	-- Pipelined timestamp operations (2-stage pipeline to break critical path)
@@ -131,14 +101,18 @@ begin
 	timestamp_pipeline : process(clk, rst_n)
 	begin
 		if rst_n = '0' then
+			r_okt_ecu_control_state <= idle;
+			r_timestamp             <= (others => '0');
 			-- Stage 1: Timestamp registration
-			r_timestamp_reg    <= (others => '0');
+			-- r_timestamp_reg    <= (others => '0');
 			r_timestamp_is_ovf <= '0';
 			-- Stage 2: Arithmetic operations
 			r_timestamp_plus_1 <= (others => '0');
 		elsif rising_edge(clk) then
+			r_okt_ecu_control_state <= n_okt_ecu_control_state;
+			r_timestamp             <= n_timestamp;
 			-- === PIPELINE STAGE 1: Register timestamp and pre-decode overflow flag ===
-			r_timestamp_reg <= r_timestamp;
+--			r_timestamp_reg <= n_timestamp;
 			
 			-- Pre-calculate overflow check (combinational → register)
 			if r_timestamp = TIMESTAMP_OVF then
@@ -148,7 +122,7 @@ begin
 			end if;
 			
 			-- === PIPELINE STAGE 2: Arithmetic operation on registered data ===
-			r_timestamp_plus_1 <= r_timestamp_reg + 1;
+			r_timestamp_plus_1 <= n_timestamp + 1;
 		end if;
 	end process timestamp_pipeline;
 
@@ -160,6 +134,7 @@ begin
 		-- ORIGINAL (combinational path): n_timestamp <= r_timestamp + 1;
 		-- NEW (registered arithmetic): Use pre-calculated r_timestamp_plus_1
 		n_timestamp             <= r_timestamp_plus_1;
+--		n_timestamp <= r_timestamp + 1;
 		n_ack_n                 <= '1';
 		ECU_fifo_w_data         <= (others => '0');
 		ECU_fifo_w_en           <= '0';
@@ -167,7 +142,7 @@ begin
 		case r_okt_ecu_control_state is
 			when idle =>
 				if (n_command(0) = '0') then
-					n_timestamp <= (others => '0');
+					--n_timestamp <= (others => '0');
 					n_okt_ecu_control_state <= idle;
 
 				elsif (ecu_req_n = '0' and n_command(0) = '1') then
@@ -176,6 +151,7 @@ begin
 				-- ORIGINAL (combinational comparison): elsif (r_timestamp = TIMESTAMP_OVF and n_command(0) = '1') then
 				-- NEW (registered flag): Use pre-calculated r_timestamp_is_ovf
 				elsif (r_timestamp_is_ovf = '1' and n_command(0) = '1') then
+--				elsif (r_timestamp = TIMESTAMP_OVF and n_command(0) = '1') then
 					n_okt_ecu_control_state <= timestamp_overflow_0;
 				end if;
 
@@ -183,9 +159,11 @@ begin
 				-- ORIGINAL (combinational comparison): if (r_timestamp = TIMESTAMP_OVF) then
 				-- NEW (registered flag): Use pre-calculated r_timestamp_is_ovf
 				if (r_timestamp_is_ovf = '1') then
+--				if (r_timestamp = TIMESTAMP_OVF) then
 					n_okt_ecu_control_state <= timestamp_overflow_0;
 
 				elsif (ECU_fifo_full = '0') then
+--					ECU_fifo_w_data(TIMESTAMP_BITS_WIDTH - 1 downto 0) <= r_timestamp_reg;
 					ECU_fifo_w_data(TIMESTAMP_BITS_WIDTH - 1 downto 0) <= r_timestamp;
 					ECU_fifo_w_en                                      <= '1';
 					n_timestamp                                        <= (others => '0');
@@ -224,6 +202,83 @@ begin
 				end if;
 		end case;
 	end process;
+
+
+--signals_update : process(clk, rst_n)
+--	begin
+--		if rst_n = '0' then
+--			r_okt_ecu_control_state <= idle;
+--			r_timestamp             <= (others => '0');
+--		
+--		elsif rising_edge(clk) then
+--			r_okt_ecu_control_state <= n_okt_ecu_control_state;
+--			r_timestamp             <= n_timestamp;
+--		end if;
+--
+--	end process signals_update;
+--
+--	-- input monitor: Stores data in fifo
+--	input_monitor: process(r_okt_ecu_control_state, ecu_req_n, r_timestamp, aer_data, ECU_fifo_full, n_command)
+--	begin
+--		n_okt_ecu_control_state <= r_okt_ecu_control_state;
+--		n_timestamp             <= r_timestamp + 1;
+--		n_ack_n                 <= '1';
+--		ECU_fifo_w_data             <= (others => '0');
+--		ECU_fifo_w_en               <= '0';
+--
+--		case r_okt_ecu_control_state is
+--			when idle =>
+--				if (ecu_req_n = '0' and n_command(0) = '1' ) then
+--					n_okt_ecu_control_state <= req_fall_0;
+--
+--				elsif (r_timestamp = TIMESTAMP_OVF and n_command(0) = '1' ) then
+--					n_okt_ecu_control_state <= timestamp_overflow_0;
+--				end if;
+--
+--			when req_fall_0 =>
+--				if (r_timestamp = TIMESTAMP_OVF) then
+--					n_okt_ecu_control_state <= timestamp_overflow_0;
+--
+--				elsif (ECU_fifo_full= '0') then
+--					ECU_fifo_w_data(TIMESTAMP_BITS_WIDTH - 1 downto 0) <= r_timestamp;
+--					ECU_fifo_w_en                                      <= '1';
+--					n_timestamp                                    <= (others => '0');
+--					n_okt_ecu_control_state                        <= req_fall_1;
+--				end if;
+--
+--			when req_fall_1 =>
+--				if (ECU_fifo_full= '0') then
+--					ECU_fifo_w_data(BUFFER_BITS_WIDTH - 1 downto 0) <= aer_data;
+--					ECU_fifo_w_en                                   <= '1';
+--					--n_timestamp                                 <= (others => '0');
+--					--n_ack_n                                     <= '0';
+--					n_okt_ecu_control_state                     <= wait_req_rise;
+--				end if;
+--
+--			when wait_req_rise =>
+--				n_ack_n <= '0';
+--				if (ecu_req_n = '1') then
+--					n_okt_ecu_control_state <= idle;
+--				end if;
+--
+--			when timestamp_overflow_0 =>
+--				if (ECU_fifo_full= '0') then
+--					ECU_fifo_w_data             <= (others => '1');
+--					ECU_fifo_w_en               <= '1';
+--					n_timestamp             <= (others => '0');
+--					n_okt_ecu_control_state <= timestamp_overflow_1;
+--				end if;
+--
+--			when timestamp_overflow_1 =>
+--				if (ECU_fifo_full= '0') then
+--					ECU_fifo_w_data             <= (others => '0');
+--					ECU_fifo_w_en               <= '1';
+--					n_timestamp             <= (others => '0');
+--					n_okt_ecu_control_state <= idle;
+--				end if;
+--		end case;
+--	end process;
+
 
 	control_ECU_usb_ready : process(clk, rst_n) is
 		-- variable usb_burst : integer range 0 to USB_BURST_WORDS;

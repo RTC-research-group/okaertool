@@ -5,7 +5,7 @@ from setuptools import setup, find_packages
 setup(
     # Name and version of the package
     name='pyokaertool',
-    version='0.2.5',
+    version='0.2.6',
     packages=find_packages(),
 
     # List of package dependencies

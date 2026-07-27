@@ -70,7 +70,7 @@ class Okaertool:
     # USB parameters
     USB_BLOCK_SIZE = 16 * 1024  # Will be updated in init() based on USB speed
     USB_TRANSFER_LENGTH = 1 * 1024 * 1024  # Must be multiple of USB_BLOCK_SIZE
-    MAX_NUM_USB_BUFFERS = 8
+    MAX_NUM_USB_BUFFERS = 16
     USB_TRANSFER_TIMEOUT_MS = 500  # Timeout for USB transfers in milliseconds
     
 
@@ -290,16 +290,17 @@ class Okaertool:
         for pair_idx in range(num_pairs):
             byte_idx = pair_idx * 2
             
-            # Skip first pair
-            if byte_idx == 0:
-                continue
+            # # Skip first pair
+            # if byte_idx == 0:
+            #     continue
             
             # Extract timestamp and address
             ts = int(data[byte_idx])
             addr = int(data[byte_idx + 1])
             
             # Skip null events
-            if ts == 0 or addr == 0:
+            if ts == 0 and addr == 0:
+                self.logger.warning("Skipping null event")
                 continue
             
             # Validate address
@@ -309,6 +310,7 @@ class Okaertool:
             # Handle timestamp overflow
             if ts == 0xFFFFFFFF:
                 self.global_timestamp += ts
+                self.logger.debug("Timestamp overflow detected")
                 continue
             
             # Extract input index
