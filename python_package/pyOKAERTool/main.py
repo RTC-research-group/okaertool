@@ -67,6 +67,7 @@ class Okaertool:
     LOG_LEVEL = logging.INFO
     LOG_FILE = "okaertool.log"
     SPIKE_SIZE_BYTES = 8  # Each spike has a timestamp (4 bytes) and an address (4 bytes)
+    TIMESTAMP_TICK_NS = 10  # Hardware timestamp tick: 10 ns
     # USB parameters
     USB_BLOCK_SIZE = 16 * 1024  # Will be updated in init() based on USB speed
     USB_TRANSFER_LENGTH = 1 * 1024 * 1024  # Must be multiple of USB_BLOCK_SIZE
@@ -279,9 +280,11 @@ class Okaertool:
         """
         # Convert to numpy array
         data = np.frombuffer(buffer, dtype=np.uint32)
+        first_abs_ts = None
+        last_abs_ts = None
         
         if len(data) < 2:
-            return
+            return first_abs_ts, last_abs_ts
         
         # Process events in pairs (timestamp, address)
         num_pairs = len(data) // 2
@@ -320,9 +323,14 @@ class Okaertool:
             absolute_ts = self.global_timestamp + ts
             spikes[input_idx].timestamps.append(absolute_ts)
             spikes[input_idx].addresses.append(addr & 0x3FFFFFFF)
+            if first_abs_ts is None:
+                first_abs_ts = absolute_ts
+            last_abs_ts = absolute_ts
             
             # Update global_timestamp by the delta
             self.global_timestamp += ts
+
+        return first_abs_ts, last_abs_ts
 
 
     def _usb_reader_thread(self, buffer_size):
@@ -448,6 +456,11 @@ class Okaertool:
         start_time = time.time()
         total_spikes = 0
         buffer_count = 0
+        capture_start_ts = None
+        capture_last_ts = None
+        duration_ticks = None
+        if duration is not None:
+            duration_ticks = int((duration * 1e9) / self.TIMESTAMP_TICK_NS)
         
         try:
             # Main processing loop
@@ -457,7 +470,11 @@ class Okaertool:
                     buffer_count += 1
                     
                     # Process buffer
-                    self._process_buffer(buffer, spikes)
+                    first_ts, last_ts = self._process_buffer(buffer, spikes)
+                    if first_ts is not None:
+                        if capture_start_ts is None:
+                            capture_start_ts = first_ts
+                        capture_last_ts = last_ts
                     
                     # Log progress every 50 buffers
                     if buffer_count % 50 == 0:
@@ -471,9 +488,22 @@ class Okaertool:
                     
                     # Check stopping conditions
                     if duration is not None:
+                        if (
+                            capture_start_ts is not None
+                            and capture_last_ts is not None
+                            and (capture_last_ts - capture_start_ts) >= duration_ticks
+                        ):
+                            hw_elapsed_s = (capture_last_ts - capture_start_ts) * self.TIMESTAMP_TICK_NS / 1e9
+                            self.logger.info(f'Duration limit reached (HW timestamps): {hw_elapsed_s:.2f} seconds')
+                            break
+
+                        # Guard condition when no spikes arrive or timestamps never progress.
                         elapsed = time.time() - start_time
-                        if elapsed >= duration:
-                            self.logger.info(f'Duration limit reached: {elapsed:.2f} seconds')
+                        if elapsed >= duration * 3:
+                            self.logger.warning(
+                                f'Wall-clock guard reached after {elapsed:.2f} seconds '
+                                f'while waiting for {duration:.2f} seconds of hardware timestamps'
+                            )
                             break
                     
                     if max_spikes is not None:
