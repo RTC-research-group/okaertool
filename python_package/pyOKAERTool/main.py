@@ -15,28 +15,34 @@
 ##    GNU General Public License for more details.                             ##
 ##                                                                             ##
 ##    You should have received a copy of the GNU General Public License        ##
-##    along with pyNAVIS.  If not, see <http://www.gnu.org/licenses/>.         ##
+##    along with okaertool.  If not, see <http://www.gnu.org/licenses/>.       ##
 ##                                                                             ##
 #################################################################################
-import time
+"""Python driver for the OKAERTool AER monitor/sequencer built on an Opal Kelly USB 3.0 board."""
 import logging
-import numpy as np
 import threading
-from queue import Queue
+import time
+from queue import Empty, Full, Queue
+
+import numpy as np
+
 from . import ok as ok
+
 
 class Spikes:
     """
-    Class that contains all the addresses and timestamps of a file.
+    Addresses and timestamps of the spikes captured on one input.
+
     Attributes:
-        timestamps (int[]): Timestamps of the file.
-        addresses (int[]): Addresses of the file.
+        addresses (int[]): Address of each spike.
+        timestamps (int[]): Timestamp of each spike.
     Note:
-        Timestamps and addresses are matched, which means that timestamps[0] is the timestamp for the spike with address addresses[0].
+        Both lists are matched: timestamps[i] is the timestamp of the spike with address addresses[i].
     """
-    def __init__(self, addresses=[], timestamps=[]):
-        self.addresses = addresses
-        self.timestamps = timestamps
+
+    def __init__(self, addresses=None, timestamps=None):
+        self.addresses = addresses if addresses is not None else []
+        self.timestamps = timestamps if timestamps is not None else []
 
     def __str__(self):
         return f"Addresses: {self.addresses}\nTimestamps: {self.timestamps}"
@@ -51,37 +57,42 @@ class Spikes:
 
 class Okaertool:
     """
-    Class that manages the OpalKelly USB 3.0 board. This class interfaces with the okaertool FPGA module to send and
-    receive information to and from the tool
+    Manages the Opal Kelly USB 3.0 board running the okaertool FPGA design. It sends commands to the tool and
+    receives the captured AER events (timestamp + address pairs) through a USB block pipe.
 
     Attributes:
         bit_file (string): Path to the FPGA .bit programming file
     """
+    # Opal Kelly endpoints. They must match the addresses used in src/cu/okt_cu.vhd
     OUTPIPE_ENDPOINT = 0xA0
     INPIPE_ENDPOINT = 0x80
     INWIRE_COMMAND_ENDPOINT = 0x00
     INWIRE_SELINPUT_ENDPOINT = 0x01
     INWIRE_RESET_ENDPOINT = 0x02
     INWIRE_CONFIG_ENDPOINT = 0x03
+
     NUM_INPUTS = 3
     LOG_LEVEL = logging.INFO
     LOG_FILE = "okaertool.log"
-    SPIKE_SIZE_BYTES = 8  # Each spike has a timestamp (4 bytes) and an address (4 bytes)
+
+    # Event format: two 32-bit words (timestamp, address)
+    SPIKE_SIZE_BYTES = 8
+    TIMESTAMP_BITS_WIDTH = 32  # Must match TIMESTAMP_BITS_WIDTH in okt_global_pkg.vhd
+    TIMESTAMP_WRAP_VALUE = 1 << TIMESTAMP_BITS_WIDTH  # Added to global_timestamp on each overflow marker
+    TIMESTAMP_OVERFLOW_MARKER = (1 << TIMESTAMP_BITS_WIDTH) - 1  # 0xFFFFFFFF in both the timestamp and address words
+
     # USB parameters
-    USB_BLOCK_SIZE = 16 * 1024  # Will be updated in init() based on USB speed
-    USB_TRANSFER_LENGTH = 1 * 1024 * 1024  # Must be multiple of USB_BLOCK_SIZE
-    MAX_NUM_USB_BUFFERS = 16
-    USB_TRANSFER_TIMEOUT_MS = 500  # Timeout for USB transfers in milliseconds
-    
+    USB_BLOCK_SIZE = 16 * 1024  # Updated in init() according to the USB speed
+    USB_TRANSFER_LENGTH = 1 * 1024 * 1024  # Must be a multiple of USB_BLOCK_SIZE
+    MAX_NUM_USB_BUFFERS = 16  # Capacity of the queue between the USB reader thread and the processing loop
+    USB_TRANSFER_TIMEOUT_MS = 500
 
     def __init__(self, bit_file=None):
         """
-        Constructor of the class. It loads the OpalKelly API, gets the number of devices connected to the USB port and
-        selects the first one. It also initializes the path to the bit file and creates an empty list of inputs.
+        Load the Opal Kelly API and initialize the class attributes. The device is not opened until init() is called.
 
         :param bit_file: Path to the FPGA .bit programming file (default is None)
         """
-        # Load the OpalKelly API and initialize the class attributes
         self.device = ok.okCFrontPanel()
         self.device_count = self.device.GetDeviceCount()
         self.device_info = ok.okTDeviceInfo()
@@ -89,14 +100,13 @@ class Okaertool:
         self.inputs = []
         self.global_timestamp = 0
         self.is_monitoring = False
-        
-        # USB reading thread and double buffer system
+
+        # A reader thread pulls data from USB while the caller thread processes it
         self.usb_read_thread = None
         self.buffer_queue = Queue(maxsize=self.MAX_NUM_USB_BUFFERS)
         self.stop_usb_thread = threading.Event()
-        self.lock = threading.Lock()
-        
-        # Create a logger
+        self.lock = threading.Lock()  # Serializes every access to the device
+
         self.logger = logging.getLogger('Okaertool')
         logging.basicConfig(
             level=self.LOG_LEVEL,
@@ -108,57 +118,46 @@ class Okaertool:
             ],
         )
 
-
     def reset_board(self, mode='internal'):
         """
         Reset the board using the reset wire.
         :param mode: Reset mode. Possible values: 'internal' (default), 'external', 'both'
         :return:
         """
-        if mode not in ['internal', 'external', 'both']:
+        reset_values = {'internal': 0x1, 'external': 0x2, 'both': 0x3}
+        if mode not in reset_values:
             self.logger.error(f"Invalid reset mode: {mode}. Possible values: 'internal', 'external', 'both'")
             return
-        
-        with self.lock:
-            if mode == 'internal':
-                self.device.SetWireInValue(self.INWIRE_RESET_ENDPOINT, 0x00000001)
-            elif mode == 'external':
-                self.device.SetWireInValue(self.INWIRE_RESET_ENDPOINT, 0x00000002)
-            elif mode == 'both':
-                self.device.SetWireInValue(self.INWIRE_RESET_ENDPOINT, 0x00000003)
 
+        with self.lock:
+            self.device.SetWireInValue(self.INWIRE_RESET_ENDPOINT, reset_values[mode])
             self.device.UpdateWireIns()
-            # Wait a 100 ms and set the reset back to 0
-            time.sleep(0.1)
+            time.sleep(0.1)  # Keep the reset asserted for 100 ms
             self.device.SetWireInValue(self.INWIRE_RESET_ENDPOINT, 0x00000000)
             self.device.UpdateWireIns()
         self.logger.info("Board reset in mode: " + mode)
 
-
     def reset_timestamp(self):
         """
-        The OKAERTool captures the AER events with a differential timestamp. When the tool monitors the AER events, the golbal
-        timestamp is increased by the differential timestamp. This function resets the global timestamp to 0.
+        The OKAERTool timestamps the AER events with an absolute counter that free-runs from 0 while a capture is
+        active. global_timestamp only accumulates the wrap-around offset (added once per overflow marker), so it must
+        be reset to 0 whenever a new capture starts, in sync with the FPGA counter.
         :return:
         """
-        # Reset the global timestamp
         self.global_timestamp = 0
         self.logger.info("Timestamp reset")
 
-
     def init(self):
         """
-        Open the USB device and configure the FPGA using the bit file define in the constructor.
-        putting a timestamp to each event.
-        :return:
+        Open the USB device, program the FPGA with the bit file given in the constructor (if any), configure the USB
+        block size according to the negotiated USB speed and leave the tool in idle mode.
+        :return: 0 if the operation is successful, -1 otherwise
         """
-        # Open the USB device
         error = self.device.OpenBySerial("")
-        if error != 0:  # No error
+        if error != ok.okCFrontPanel.NoError:
             self.logger.error(f"Error at okaertool initialization: {ok.okCFrontPanel_GetErrorString(error)}")
             return -1
 
-        # Configure the FPGA with the bit file if it is defined
         if self.bit_file_path is not None:
             error = self.device.ConfigureFPGA(self.bit_file_path)
             if error != ok.okCFrontPanel.NoError:
@@ -166,241 +165,210 @@ class Okaertool:
                 return -1
         else:
             self.logger.info("No bit file loaded. Ensure that the FPGA is already programmed")
-        
-        # Get the device information
+
         error = self.device.GetDeviceInfo(info=self.device_info)
         if error != ok.okCFrontPanel.NoError:
             self.logger.error(f"Error at okaertool GetDeviceInfo: {ok.okCFrontPanel_GetErrorString(error)}")
             return -1
         self.logger.info(f"Device product ID: {self.device_info.productID}, product name: {self.device_info.productName}, "
                          f"USB speed: {self.device_info.usbSpeed},")
+
+        # Block sizes are limited by the USB speed (see the Opal Kelly ReadFromBlockPipeOut documentation)
         match self.device_info.usbSpeed:
             case ok.OK_USBSPEED_SUPER:
-                self.USB_BLOCK_SIZE = 16 * 1024 # USB 3.0 SuperSpeed - Power of two [16..16384];
+                self.USB_BLOCK_SIZE = 16 * 1024
                 self.logger.info("USB 3.0 SuperSpeed. USB block size set to 16 KB")
             case ok.OK_USBSPEED_HIGH:
-                self.USB_BLOCK_SIZE = 1024 # USB 2.0 HighSpeed - Power of two [16..1024]
+                self.USB_BLOCK_SIZE = 1024
                 self.logger.info("USB 2.0 HighSpeed. USB block size set to 1 KB")
             case ok.OK_USBSPEED_FULL:
-                self.USB_BLOCK_SIZE = 64 # USB 1.1 FullSpeed - Power of two [16..64]
-                self.logger.info("USB 1.1 FullSpeed. USB block size set to 64 Bytes")
-                self.USB_BLOCK_SIZE = 64 # USB 1.1 FullSpeed - Power of two [16..64]
-            case ok.OK_USBSPEED_UNKNOWN:
-                self.logger.warning("Unknown USB speed. USB block size set to default 64 Bytes")
                 self.USB_BLOCK_SIZE = 64
-        
-        # Set the USB transactions timeout
+                self.logger.info("USB 1.1 FullSpeed. USB block size set to 64 Bytes")
+            case ok.OK_USBSPEED_UNKNOWN:
+                self.USB_BLOCK_SIZE = 64
+                self.logger.warning("Unknown USB speed. USB block size set to default 64 Bytes")
+
         self.device.SetTimeout(self.USB_TRANSFER_TIMEOUT_MS)
 
-        # Set the tool to idle mode
         self.__select_command__(['idle'])
         self.logger.info("okaertool initialized as idle")
         return 0
 
-
-    def __select_inputs__(self, inputs=[]):
+    def __select_inputs__(self, inputs=()):
         """
-        Select the inputs that the user wants to work with. These inputs are captured under the same timestamp domain.
-        :param inputs: List of input ports to capture information. Possible values: 'port_a' 'port_b' 'port_c'
+        Select the inputs to work with. The selected inputs are captured under the same timestamp domain.
+        :param inputs: List of input ports. Possible values: 'port_a' 'port_b' 'port_c'
         :return:
         """
-        # Set the value of the input wire. The value is a 3-bit number where each bit represents an input.
-        selinput_endpoint_value = 0x00000000
-        if len(inputs) != 0:
-            if 'port_a' in inputs:
-                selinput_endpoint_value += 1  # Set 1 in the bit number 0
-            if 'port_b' in inputs:
-                selinput_endpoint_value += 2  # Set 1 in the bit number 1
-            if 'port_c' in inputs:
-                selinput_endpoint_value += 4  # Set 1 in the bit number 2
+        # One bit per input in the input wire
+        input_bits = {'port_a': 1, 'port_b': 2, 'port_c': 4}
+        selinput_endpoint_value = sum(bit for port, bit in input_bits.items() if port in inputs)
         self.logger.debug(f'Value of input selection: {selinput_endpoint_value}')
 
-        # If the selinput_endpoint_value is 0, the input is not defined. Log an warning message
         if selinput_endpoint_value == 0:
             self.logger.warning('No inputs defined')
 
-        # Set the value of the input wire
         with self.lock:
             self.device.SetWireInValue(self.INWIRE_SELINPUT_ENDPOINT, selinput_endpoint_value)
             self.device.UpdateWireIns()
 
-
-    def __select_command__(self, command=[]):
+    def __select_command__(self, command=()):
         """
-        Select the commands that the user wants to work with. These commands are used to configure the tool:
+        Select the operation mode of the tool. The values are written in the command wire and must match the
+        decoding done in the FPGA design (okt_cu.vhd / okt_cu_pkg.vhd):
         - idle: Do nothing
-        - monitor: Capture events from the IMU module, put a timestamp to each event and send them to the ECU module
-        - bypass: Capture events from the IMU module and send them directly to the OSU module
-        - monitor_bypass: Capture events from the IMU module, put a timestamp to each event sending them to the ECU module and
-            bypass the events to the OSU module
-        - sequencer: Send events from the software to the OKAERTool to be sequenced using the OSU module
-        - config_port_a: Configure the device connected to the port A
-        - config_port_b: Configure the device connected to the port B
-        :param command: List of commands. Possible values: 'idle' 'monitor' 'bypass' 'monitor_bypass' 'sequencer'
+        - monitor: Capture events from the IMU module, timestamp them in the ECU module and send them to the PC
+        - bypass: Forward the events captured by the IMU module directly to the OSU module
+        - merge: Monitor and bypass at the same time
+        - sequencer: Send events from the PC to the tool to be sequenced by the OSU module
+        - debug: Debug mode
+        - config_port_a / config_port_b / config_port_c: Configure the device connected to the given port
+        :param command: List of commands
         :return:
         """
-        # Set the value of the command wire. The value is a 3-bit number where each bit represents a command or a
-        # combination of them.
-        command_endpoint_value = 0x00000000
-        if len(command) != 0:
-            if 'idle' in command:
-                command_endpoint_value += 0  # Set 0 in the bit number 0
-            if 'monitor' in command:
-                command_endpoint_value += 1  # Set 1 in the bit number 0
-            if 'bypass' in command:
-                command_endpoint_value += 2  # Set 1 in the bit number 1
-            if 'merge' in command:
-                command_endpoint_value += 3  # Set 1 in the bit number 0 and 1
-            if 'sequencer' in command:
-                command_endpoint_value += 4  # Set 1 in the bit number 2
-            if 'debug' in command:
-                command_endpoint_value += 5  
-            if 'config_port_a' in command:
-                command_endpoint_value += 8  # Set 1 in the bit number 3
-            if 'config_port_b' in command:
-                command_endpoint_value += 16 # Set 1 in the bit number 4
-            if 'config_port_c' in command:
-                command_endpoint_value += 32 # Set 1 in the bit number 5
-
+        command_values = {
+            'idle': 0,
+            'monitor': 1,
+            'bypass': 2,
+            'merge': 3,
+            'sequencer': 4,
+            'debug': 5,
+            'config_port_a': 8,
+            'config_port_b': 16,
+            'config_port_c': 32,
+        }
+        command_endpoint_value = sum(value for name, value in command_values.items() if name in command)
         self.logger.debug(f'Value of command selection: {command_endpoint_value}')
 
-        # Set the value of the command wire
         with self.lock:
             self.device.SetWireInValue(self.INWIRE_COMMAND_ENDPOINT, command_endpoint_value)
             self.device.UpdateWireIns()
 
+    def _new_spikes(self):
+        """Create an empty Spikes struct for each input."""
+        return [Spikes() for _ in range(self.NUM_INPUTS)]
+
+    def _drain_queue(self, spikes=None):
+        """
+        Empty the buffer queue.
+        :param spikes: List of Spikes objects where the queued buffers are processed. If None, buffers are discarded.
+        """
+        while True:
+            try:
+                buffer = self.buffer_queue.get_nowait()
+            except Empty:
+                return
+            if spikes is not None:
+                self._process_buffer(buffer, spikes)
 
     def _process_buffer(self, buffer, spikes):
         """
         Process a buffer and extract spikes (timestamps and addresses).
-        
-        :param buffer: Buffer containing raw spike data
+
+        :param buffer: Buffer containing raw spike data, as (timestamp, address) pairs of 32-bit words
         :param spikes: List of Spikes objects to populate
         """
-        # Convert to numpy array
         data = np.frombuffer(buffer, dtype=np.uint32)
-        
-        if len(data) < 2:
-            return
-        
-        # Process events in pairs (timestamp, address)
-        num_pairs = len(data) // 2
-        
-        # Process each pair
-        for pair_idx in range(num_pairs):
-            byte_idx = pair_idx * 2
-            
-            # # Skip first pair
-            # if byte_idx == 0:
-            #     continue
-            
-            # Extract timestamp and address
-            ts = int(data[byte_idx])
-            addr = int(data[byte_idx + 1])
-            
-            # Skip null events
-            if ts == 0 and addr == 0:
-                self.logger.warning("Skipping null event")
-                continue
-            
-            # Validate address
-            if (addr & 0x3FFFFFFF) > 256:
-                continue
-            
-            # Handle timestamp overflow
-            if ts == 0xFFFFFFFF:
-                self.global_timestamp += ts
+
+        for word_idx in range(0, len(data) - 1, 2):
+            ts = int(data[word_idx])
+            addr = int(data[word_idx + 1])
+
+            # The overflow marker (both words 0xFFFFFFFF) must be checked before using the address, since its
+            # address word does not represent a real device address
+            if ts == self.TIMESTAMP_OVERFLOW_MARKER and addr == self.TIMESTAMP_OVERFLOW_MARKER:
+                self.global_timestamp += self.TIMESTAMP_WRAP_VALUE
                 self.logger.debug("Timestamp overflow detected")
                 continue
-            
-            # Extract input index
-            input_idx = (addr & 0xC000_0000) >> 30
-            
-            # Save spike with absolute timestamp
-            absolute_ts = self.global_timestamp + ts
-            spikes[input_idx].timestamps.append(absolute_ts)
-            spikes[input_idx].addresses.append(addr & 0x3FFFFFFF)
-            
-            # Update global_timestamp by the delta
-            self.global_timestamp += ts
 
+            # The two MSBs of the address word identify the input port
+            input_idx = (addr & 0xC000_0000) >> 30
+
+            # ts is the time elapsed since the capture start or the last overflow
+            spikes[input_idx].timestamps.append(self.global_timestamp + ts)
+            spikes[input_idx].addresses.append(addr & 0x3FFFFFFF)
 
     def _usb_reader_thread(self, buffer_size):
         """
-        Thread function that continuously reads from USB and puts data into the buffer queue.
-        
+        Thread function that continuously reads from USB and puts the data into the buffer queue.
+
         :param buffer_size: Size of each buffer to allocate for USB reading
         """
         self.logger.debug("USB reader thread started")
-        
+
         while not self.stop_usb_thread.is_set():
-            # Allocate a new buffer for this read
             buffer = bytearray(buffer_size)
-            
-            # CRITICAL: Lock device access before USB read
+
+            # The device is not thread-safe: hold the lock during the (blocking) read
             with self.lock:
-                # Blocking read from USB
                 num_read_bytes = self.device.ReadFromBlockPipeOut(
-                    self.OUTPIPE_ENDPOINT, 
-                    self.USB_BLOCK_SIZE, 
+                    self.OUTPIPE_ENDPOINT,
+                    self.USB_BLOCK_SIZE,
                     buffer
                 )
-            
+
             if num_read_bytes < 0:
                 self.logger.warning(f'USB read error: {ok.okCFrontPanel_GetErrorString(num_read_bytes)}')
                 break
-            
+
             if num_read_bytes > 0:
-                # Trim buffer to actual read size
-                buffer = buffer[:num_read_bytes]
-                # Put the buffer in the queue (blocks if queue is full)
                 try:
-                    self.buffer_queue.put(buffer, timeout=1.0)
-                except:
+                    self.buffer_queue.put(buffer[:num_read_bytes], timeout=1.0)
+                except Full:
                     self.logger.warning("Buffer queue full, dropping data")
-        
+
         self.logger.debug("USB reader thread stopped")
 
-
-    def monitor(self, inputs=[], duration=None, max_spikes=None, live=False):
+    def _finish_capture(self, spikes):
         """
-        Get the information captured by the tool (ECU) and save it in different spikes structs depending on the selected
-        inputs. First, the events/spikes are collected in the IMU, next are captured in the ECU putting a timestamp and 
-        finally, events/spikes are sent from CU to PC by USB port. The information is read from the device while the number
-        of read bytes is less than the buffer length or the duration is not reached. 
+        Stop the capture: disable the FPGA monitoring, stop the USB reader thread and process the pending buffers.
+
+        :param spikes: List of Spikes objects where the pending buffers are processed
+        """
+        self.is_monitoring = False
+        self.stop_usb_thread.set()
+        self.__select_command__(['idle'])
+
+        if self.usb_read_thread and self.usb_read_thread.is_alive():
+            self.usb_read_thread.join(timeout=2.0)
+            if self.usb_read_thread.is_alive():
+                self.logger.warning("USB thread did not stop cleanly")
+
+        self._drain_queue(spikes)
+
+    def monitor(self, inputs=(), duration=None, max_spikes=None, live=False):
+        """
+        Capture the events received by the tool and store them in a Spikes struct per input. The events are first
+        collected by the IMU, then timestamped by the ECU and finally sent to the PC through the USB port.
+        There are three monitoring modes:
             1. Duration-based: Monitor for a specific time period (duration parameter)
             2. Spike-count based: Monitor until a specific number of spikes is captured (max_spikes parameter)
             3. Live mode: Continuous monitoring until stop_monitor() is called (live=True)
-        The information is saved in a list of spikes structs. Each struct contains the timestamps and addresses of the 
-        events/spikes captured in the same input:
+        With no mode selected, the capture runs until the USB reader thread stops.
+        Each input is stored in the position of the returned list given by its port:
             - Input 0: port_a
             - Input 1: port_b
             - Input 2: port_c
-        
+
         :param inputs: List of input ports to capture. Possible values: 'port_a', 'port_b', 'port_c'
         :param duration: Duration of capture in seconds (None for other modes)
         :param max_spikes: Maximum number of spikes to capture (None for other modes)
         :param live: If True, continuous monitoring mode until stop_monitor() is called
-        :return: List of Spikes objects (one per input), or None if in live mode
+        :return: List of Spikes objects (one per input), or None if in live mode or on error
         """
-        # Validate inputs
         if len(inputs) == 0:
             self.logger.error('No inputs defined')
             return None
-        
-        # Check that only one mode is selected
-        mode_count = sum([duration is not None, max_spikes is not None, live])
-        if mode_count > 1:
+
+        if sum([duration is not None, max_spikes is not None, live]) > 1:
             self.logger.error('Only one monitoring mode can be selected: duration, max_spikes, or live')
             return None
-        
-        # CRITICAL: Stop any previous monitoring session
+
         if self.is_monitoring:
             self.logger.warning('Previous monitoring session active, stopping it')
             self.stop_monitor()
-            time.sleep(0.2)  # Give time for cleanup
-        
-        # CRITICAL: Wait for previous USB thread to finish
+            time.sleep(0.2)
+
         if self.usb_read_thread and self.usb_read_thread.is_alive():
             self.logger.warning('Waiting for previous USB thread to finish')
             self.stop_usb_thread.set()
@@ -409,274 +377,165 @@ class Okaertool:
                 self.logger.error('Previous USB thread did not stop!')
                 return None
 
-        # Initialize spikes storage
-        spikes = [Spikes(addresses=[], timestamps=[]) for _ in range(self.NUM_INPUTS)]
-        
-        # Clear the buffer queue
-        while not self.buffer_queue.empty():
-            try:
-                self.buffer_queue.get_nowait()
-            except:
-                break
-        
-        # Reset global timestamp
-        # self.reset_board(mode='internal')
+        spikes = self._new_spikes()
+        self._drain_queue()  # Discard data from previous sessions
+
         self.reset_timestamp()
-        # Select inputs
         self.__select_inputs__(inputs=inputs)
-        # Enable monitoring on FPGA
         self.__select_command__(['monitor'])
 
-        # Start USB reader thread
         self.stop_usb_thread.clear()
         self.is_monitoring = True
         self.usb_read_thread = threading.Thread(
-            target=self._usb_reader_thread, 
+            target=self._usb_reader_thread,
             args=(self.USB_TRANSFER_LENGTH,),
             daemon=True
         )
         self.usb_read_thread.start()
-        
+
         self.logger.info(f'Starting monitoring - USB buffer: {self.USB_TRANSFER_LENGTH / (1024 * 1024):.2f} MB')
-        
-        # For live mode, return immediately (thread continues running)
+
         if live:
             self.logger.info('Live monitoring started')
             return None
 
-        # Start timing
         start_time = time.time()
-        total_spikes = 0
         buffer_count = 0
-        
+
         try:
-            # Main processing loop
-            while self.is_monitoring and not live:
+            while self.is_monitoring:
                 try:
                     buffer = self.buffer_queue.get(timeout=2.0)
-                    buffer_count += 1
-                    
-                    # Process buffer
-                    self._process_buffer(buffer, spikes)
-                    
-                    # Log progress every 50 buffers
-                    if buffer_count % 50 == 0:
-                        total_spikes = sum(len(s.timestamps) for s in spikes)
-                        elapsed = time.time() - start_time
-                        rate = total_spikes / elapsed if elapsed > 0 else 0
-                        self.logger.debug(
-                            f'Processed {buffer_count} buffers, {total_spikes} spikes, '
-                            f'{rate:.0f} spikes/sec, global_ts: {self.global_timestamp}'
-                        )
-                    
-                    # Check stopping conditions
-                    if duration is not None:
-                        elapsed = time.time() - start_time
-                        if elapsed >= duration:
-                            self.logger.info(f'Duration limit reached: {elapsed:.2f} seconds')
-                            break
-                    
-                    if max_spikes is not None:
-                        total_spikes = sum(len(s.timestamps) for s in spikes)
-                        if total_spikes >= max_spikes:
-                            self.logger.info(f'Spike limit reached: {total_spikes} spikes')
-                            break
-                            
-                except Exception as e:
-                    if self.usb_read_thread and self.usb_read_thread.is_alive():
-                        self.logger.warning(f"Timeout or error getting buffer: {e}")
+                except Empty:
+                    if self.usb_read_thread.is_alive():
+                        self.logger.warning("Timeout waiting for a USB buffer")
                         continue
-                    else:
-                        self.logger.info("USB reader thread stopped")
-                        break
-                
-                # In live mode, continue until stop_monitor() is called
-        
-        finally:
-            # Stop monitoring (only for non-live modes)
-            self.logger.debug('Cleaning up monitoring session')
-            self.is_monitoring = False
-            self.stop_usb_thread.set()
-            self.__select_command__(['idle'])
-            
-            # Wait for USB thread to finish
-            if self.usb_read_thread and self.usb_read_thread.is_alive():
-                self.usb_read_thread.join(timeout=2.0)
-                if self.usb_read_thread.is_alive():
-                    self.logger.warning("USB thread did not stop cleanly")
-            
-            # Process any remaining buffers
-            while not self.buffer_queue.empty():
-                try:
-                    buffer = self.buffer_queue.get_nowait()
-                    self._process_buffer(buffer, spikes)
-                except:
+                    self.logger.info("USB reader thread stopped")
                     break
-            
-            # Log statistics
+
+                buffer_count += 1
+                self._process_buffer(buffer, spikes)
+
+                if buffer_count % 50 == 0:
+                    total_spikes = sum(len(s.timestamps) for s in spikes)
+                    elapsed = time.time() - start_time
+                    rate = total_spikes / elapsed if elapsed > 0 else 0
+                    self.logger.debug(
+                        f'Processed {buffer_count} buffers, {total_spikes} spikes, '
+                        f'{rate:.0f} spikes/sec, global_ts: {self.global_timestamp}'
+                    )
+
+                if duration is not None:
+                    elapsed = time.time() - start_time
+                    if elapsed >= duration:
+                        self.logger.info(f'Duration limit reached: {elapsed:.2f} seconds')
+                        break
+
+                if max_spikes is not None:
+                    total_spikes = sum(len(s.timestamps) for s in spikes)
+                    if total_spikes >= max_spikes:
+                        self.logger.info(f'Spike limit reached: {total_spikes} spikes')
+                        break
+        finally:
+            self.logger.debug('Cleaning up monitoring session')
+            self._finish_capture(spikes)
+
             total_spikes = sum(len(s.timestamps) for s in spikes)
             elapsed = time.time() - start_time
             self.logger.info(f'Monitoring completed: {elapsed:.2f} seconds, {total_spikes} spikes captured')
-        
+
         return spikes
-        #     # Stop monitoring
-        #     if not live or not self.is_monitoring:
-        #         self.is_monitoring = False
-        #         self.stop_usb_thread.set()
-        #         self.__select_command__(['idle'])
-                
-        #         # Wait for USB thread to finish
-        #         if self.usb_read_thread and self.usb_read_thread.is_alive():
-        #             self.logger.debug("Waiting for USB thread to finish")
-        #             self.usb_read_thread.join()
-                
-        #         # Log statistics
-        #         elapsed = time.time() - start_time
-        #         self.logger.info(f'Monitoring completed: {elapsed:.2f} seconds, {total_spikes} spikes captured')
-        
-        # # Return results (None for live mode, spikes for other modes)
-        # if live:
-        #     return None
-        # else:
-        #     return spikes
-        
 
     def get_live_spikes(self):
         """
-        Get spikes captured during live monitoring. This method returns accumulated spikes
-        and clears the internal buffer.
-        
-        :return: List of Spikes objects, one per input
+        Get the spikes captured since the last call during live monitoring. The processed buffers are removed from
+        the internal queue.
+
+        :return: List of Spikes objects (one per input), or None if there are no new spikes
         """
         if not self.is_monitoring:
             self.logger.warning('Not in live monitoring mode')
             return None
-        
-        # Create a snapshot of current spikes
-        spikes = [Spikes(addresses=[], timestamps=[]) for _ in range(self.NUM_INPUTS)]
-        
-        # Process all available buffers
-        while not self.buffer_queue.empty():
-            try:
-                buffer = self.buffer_queue.get_nowait()
-                self._process_buffer(buffer, spikes)
-            except:
-                self.logger.debug("No more buffers to process")
-                break
-        
-        return spikes if sum(len(s.timestamps) for s in spikes) > 0 else None
 
+        spikes = self._new_spikes()
+        self._drain_queue(spikes)
+
+        return spikes if any(s.timestamps for s in spikes) else None
 
     def stop_monitor(self):
         """
-        Stop live monitoring and return all captured spikes.
-        
-        :return: List of Spikes objects containing all captured data
+        Stop live monitoring and return the spikes captured since the last call to get_live_spikes().
+
+        :return: List of Spikes objects (one per input), or None if no monitoring session is active
         """
         if not self.is_monitoring:
             self.logger.warning('Not currently monitoring')
             return None
-        
+
         self.logger.info('Stopping live monitor')
-        
-        
-        # Signal stop
-        self.is_monitoring = False
-        self.stop_usb_thread.set()
-        
-        # Disable FPGA monitoring
-        self.__select_command__(['idle'])
-        
-        # Wait for USB thread to finish
-        if self.usb_read_thread and self.usb_read_thread.is_alive():
-            self.logger.debug("Waiting for USB thread to finish")
-            self.usb_read_thread.join(timeout=2.0)
-            if self.usb_read_thread.is_alive():
-                self.logger.warning("USB thread did not stop cleanly")
-        
-        # Process any remaining buffers
-        spikes = [Spikes(addresses=[], timestamps=[]) for _ in range(self.NUM_INPUTS)]
-        while not self.buffer_queue.empty():
-            try:
-                buffer = self.buffer_queue.get_nowait()
-                self._process_buffer(buffer, spikes)
-            except:
-                break
-        
+
+        spikes = self._new_spikes()
+        self._finish_capture(spikes)
+
         total_spikes = sum(len(s.timestamps) for s in spikes)
         self.logger.info(f'Live monitoring stopped: {total_spikes} spikes captured')
-        
+
         return spikes
 
-
-    def bypass(self, inputs=[]):
+    def bypass(self, inputs=()):
         """
-        AER data is bypassed from IMU directly into OSU. This command can be used alongside "monitor".
-        
-        :param inputs: string that contains input port to bypass. Possible values: 'Port_A' 'Port_B' 'Node_out'
+        AER data is bypassed from the IMU directly into the OSU.
+
+        :param inputs: List of input ports to bypass. Possible values: 'port_a' 'port_b' 'port_c'
         :return:
         """
         self.logger.info(f'Bypassing data over {inputs}')
         self.__select_inputs__(inputs=inputs)
-        self.__select_command__('bypass')
-
+        self.__select_command__(['bypass'])
 
     def sequencer(self, file):
         """
-        TODO: Implement sequencer mode in a thread.
-        MODE SEQUENCER: A file is selected to be sequenced over NODE_IN output in a lone transfer.
-        :param file: numpy or txt file that contains binary data for sequencer
+        Sequencer mode: the content of a binary file is sent to the OSU, which sequences it over the output port in a
+        single transfer.
+        TODO: Implement the sequencer mode in a thread.
+
+        :param file: Path to a binary file with (timestamp, address) pairs of 32-bit words
         :return:
         """
         self.logger.info('Sequencing data')
 
-        # Read the binary file into a numpy array
-        with open(file, 'rb') as binfile:
-            buffer = np.frombuffer(binfile.read(), dtype=np.uint8)
-            buffer = np.array(buffer, dtype=np.uint8)
-        self.__select_command__('sequencer')
+        buffer = np.fromfile(file, dtype=np.uint8)
+        self.__select_command__(['sequencer'])
         num_sent_bytes = self.device.WriteToBlockPipeIn(self.INPIPE_ENDPOINT, self.USB_BLOCK_SIZE, buffer)
-        self.logger.info(f'Number of sent bytes:  {num_sent_bytes}. Number of sent spikes: {num_sent_bytes/self.SPIKE_SIZE_BYTES}')
-        self.__select_command__('idle')
-
+        self.logger.info(f'Number of sent bytes: {num_sent_bytes}. Number of sent spikes: {num_sent_bytes / self.SPIKE_SIZE_BYTES}')
+        self.__select_command__(['idle'])
 
     def set_config(self, device, register_address, register_value):
         """
-        Set the value of a register pointed by an address. The pair (address, value) is a 32-bit number where the fist 16 bits
-        are the register address and the last 16 bits are the register value.
+        Set the value of a register of the device connected to a port. The 32-bit value written in the config wire
+        has the register address in the upper 16 bits and the register value in the lower 16 bits.
+
         :param device: Device to be configured. Possible values: 'port_a' 'port_b' 'port_c'
         :param register_address: Address of the register to be set
         :param register_value: Value to be set in the register
         :return: 0 if the operation is successful, -1 if the device is not defined
         """
-        # Concatenate the address and value into a 32-bit number
-        address = (register_address & 0xFFFF) << 16
-        value = register_value & 0xFFFF
-        address_value = address | value
-        # Set the value of the config register
+        config_commands = {'port_a': 'config_port_a', 'port_b': 'config_port_b', 'port_c': 'config_port_c'}
+        if device not in config_commands:
+            self.logger.error('Device not defined')
+            return -1
+
+        address_value = ((register_address & 0xFFFF) << 16) | (register_value & 0xFFFF)
         with self.lock:
             self.device.SetWireInValue(self.INWIRE_CONFIG_ENDPOINT, address_value)
             self.device.UpdateWireIns()
-        # Set the command to configure the device
-        if device == 'port_a':
-            self.__select_command__(['config_port_a'])
-        elif device == 'port_b':
-            self.__select_command__(['config_port_b'])
-        elif device == 'port_c':
-            self.__select_command__(['config_port_c'])
-        else:
-            self.logger.error('Device not defined')
-            return -1
-        # Wait 10ms to ensure that the register is set
-        # time.sleep(0.01)
-        # Set the command to idle to finish the configuration
+
+        # The FPGA latches the register while the config command is active
+        self.__select_command__([config_commands[device]])
         self.__select_command__(['idle'])
-        # Wait 10ms to ensure that the register is set
-        # time.sleep(0.01)
-        # Set the value of the register to zero
+
         with self.lock:
             self.device.SetWireInValue(self.INWIRE_CONFIG_ENDPOINT, 0x00000000)
             self.device.UpdateWireIns()
         self.logger.info(f'Configuring {device} with address {hex(register_address)} and value {hex(register_value)}')
         return 0
-

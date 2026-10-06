@@ -1,3 +1,8 @@
+-- Input Merger Unit (IMU)
+--
+-- Merges the three AER inputs into a single AER output, serving the selected inputs (input_select) in round-robin
+-- order. The input index is added to the MSBs of the output data (INPUT_BITS_WIDTH bits).
+
 library ieee;
 USE ieee.std_logic_1164.ALL;
 use ieee.std_logic_unsigned.all;
@@ -6,7 +11,7 @@ use work.okt_imu_pkg.all;
 use work.okt_global_pkg.all;
 
 
-entity okt_imu is                       -- Input Merger Unit
+entity okt_imu is
 	Port(
 		clk            : in  std_logic;
 		rst_n          : in  std_logic;
@@ -34,9 +39,6 @@ architecture Behavioral of okt_imu is
 
 	signal n_out_req_n, n_out_ack_n : std_logic;
 	signal n_out_data               : std_logic_vector(BUFFER_BITS_WIDTH - 1 downto 0);
-	
---	signal CAVIAR_ack, CAVIAR_req : std_logic;
---	signal CAVIAR_data : std_logic_vector(BUFFER_BITS_WIDTH - INPUT_BITS_WIDTH - 1 downto 0);
 
 	type state is (idle, in0, in1, in2);
 	signal r_okt_control_state, n_okt_control_state : state;
@@ -49,19 +51,6 @@ architecture Behavioral of okt_imu is
 
 begin
 
---    ws2c: entity work.okt_wsaer2caviar
---    port map(
---        WSAER_data  => in2_data(9 downto 0),
---        WSAER_req  => in2_req_n,
---        WSAER_ack => in2_ack_n,
---        CLK  => clk,
---        RST => not rst_n,             
---        row_delay  => "00111",
---        CAVIAR_ack  => CAVIAR_ack,
---        CAVIAR_req  => CAVIAR_req,
---        CAVIAR_data  => CAVIAR_data(16 downto 0)
---    );
-
 	process(clk, rst_n)
 	begin
 		if rst_n = '0' then
@@ -73,7 +62,6 @@ begin
 		end if;
 	end process;
 
---	process(r_okt_control_state, input_select, in0_req_n, in1_req_n, CAVIAR_req, in0_data, in1_data, CAVIAR_data, n_out_ack_n)
 	process(r_okt_control_state, input_select, in0_req_n, in1_req_n, in2_req_n, in0_data, in1_data, in2_data, n_out_ack_n)
 	begin
 		n_okt_control_state <= r_okt_control_state;

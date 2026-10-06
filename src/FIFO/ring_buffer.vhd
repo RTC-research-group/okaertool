@@ -1,22 +1,8 @@
-----------------------------------------------------------------------------------
--- Company: 
--- Engineer: 
--- 
--- Create Date:    10:12:35 05/14/2024 
--- Design Name: 
--- Module Name:    ring_buffer - Behavioral 
--- Project Name: 
--- Target Devices: 
--- Tool versions: 
--- Description: 
+-- Ring buffer (FIFO) with registered empty/full flags and fill count.
 --
--- Dependencies: 
---
--- Revision: 
--- Revision 0.01 - File Created
--- Additional Comments: 
---
-----------------------------------------------------------------------------------
+-- Words are written when wr_en is high (and the FIFO is not full) and read when rd_en is high (and the FIFO is not
+-- empty). The flags and fill_count are registered, so they are updated one clock cycle after the access.
+
 library ieee;
 use ieee.std_logic_1164.all;
 use work.okt_fifo_pkg.all;
@@ -155,9 +141,6 @@ begin
       rd_data <= ram(tail);
     end if;
   end process;
- 
-  -- Update the fill count
-  -- (Eliminado: ahora el cálculo y registro de fill_count está en PROC_FLAGS)
- 
+
 end architecture;
 
