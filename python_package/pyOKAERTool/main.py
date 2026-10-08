@@ -26,7 +26,20 @@ from queue import Empty, Full, Queue
 
 import numpy as np
 
-from . import ok as ok
+# Prefer the installed FrontPanel package (pip install ok); fall back to the bundled bindings
+try:
+    import ok
+except ImportError:
+    from . import ok as ok
+
+# FrontPanel >= 6.0 renamed the error code enum and the error string getter
+OK_NO_ERROR = ok.ErrorCode.NoError if hasattr(ok, 'ErrorCode') else ok.okCFrontPanel.NoError
+
+
+def ok_error_string(error_code):
+    if hasattr(ok.okCFrontPanel, 'GetErrorMessage'):
+        return ok.okCFrontPanel.GetErrorMessage(error_code)
+    return ok.okCFrontPanel.GetErrorString(error_code)
 
 
 class Spikes:
@@ -93,8 +106,10 @@ class Okaertool:
 
         :param bit_file: Path to the FPGA .bit programming file (default is None)
         """
-        self.device = ok.okCFrontPanel()
-        self.device_count = self.device.GetDeviceCount()
+        self.devices = ok.okCFrontPanelDevices()
+        self.device_count = self.devices.GetCount()
+        self.device = None  # Opened in init()
+        self.fpga = None  # Wire/pipe endpoint access. It is the device itself in FrontPanel < 6.0
         self.device_info = ok.okTDeviceInfo()
         self.bit_file_path = bit_file
         self.inputs = []
@@ -130,11 +145,11 @@ class Okaertool:
             return
 
         with self.lock:
-            self.device.SetWireInValue(self.INWIRE_RESET_ENDPOINT, reset_values[mode])
-            self.device.UpdateWireIns()
+            self.fpga.SetWireInValue(self.INWIRE_RESET_ENDPOINT, reset_values[mode])
+            self.fpga.UpdateWireIns()
             time.sleep(0.1)  # Keep the reset asserted for 100 ms
-            self.device.SetWireInValue(self.INWIRE_RESET_ENDPOINT, 0x00000000)
-            self.device.UpdateWireIns()
+            self.fpga.SetWireInValue(self.INWIRE_RESET_ENDPOINT, 0x00000000)
+            self.fpga.UpdateWireIns()
         self.logger.info("Board reset in mode: " + mode)
 
     def reset_timestamp(self):
@@ -153,22 +168,28 @@ class Okaertool:
         block size according to the negotiated USB speed and leave the tool in idle mode.
         :return: 0 if the operation is successful, -1 otherwise
         """
-        error = self.device.OpenBySerial("")
-        if error != ok.okCFrontPanel.NoError:
-            self.logger.error(f"Error at okaertool initialization: {ok.okCFrontPanel_GetErrorString(error)}")
+        self.device = self.devices.Open("")  # Empty serial opens the first available device
+        if not self.device:
+            self.logger.error(f"Error at okaertool initialization: no Opal Kelly device could be opened "
+                              f"({self.device_count} detected)")
             return -1
+        # FrontPanel >= 6.0 moved wires and pipes from okCFrontPanel to a separate data port object
+        if hasattr(self.device, 'GetFPGADataPortClassic'):
+            self.fpga = self.device.GetFPGADataPortClassic()
+        else:
+            self.fpga = self.device
 
         if self.bit_file_path is not None:
             error = self.device.ConfigureFPGA(self.bit_file_path)
-            if error != ok.okCFrontPanel.NoError:
-                self.logger.error(f"Error at okaertool FPGA configuration: {ok.okCFrontPanel_GetErrorString(error)}")
+            if error != OK_NO_ERROR:
+                self.logger.error(f"Error at okaertool FPGA configuration: {ok_error_string(error)}")
                 return -1
         else:
             self.logger.info("No bit file loaded. Ensure that the FPGA is already programmed")
 
         error = self.device.GetDeviceInfo(info=self.device_info)
-        if error != ok.okCFrontPanel.NoError:
-            self.logger.error(f"Error at okaertool GetDeviceInfo: {ok.okCFrontPanel_GetErrorString(error)}")
+        if error != OK_NO_ERROR:
+            self.logger.error(f"Error at okaertool GetDeviceInfo: {ok_error_string(error)}")
             return -1
         self.logger.info(f"Device product ID: {self.device_info.productID}, product name: {self.device_info.productName}, "
                          f"USB speed: {self.device_info.usbSpeed},")
@@ -209,8 +230,8 @@ class Okaertool:
             self.logger.warning('No inputs defined')
 
         with self.lock:
-            self.device.SetWireInValue(self.INWIRE_SELINPUT_ENDPOINT, selinput_endpoint_value)
-            self.device.UpdateWireIns()
+            self.fpga.SetWireInValue(self.INWIRE_SELINPUT_ENDPOINT, selinput_endpoint_value)
+            self.fpga.UpdateWireIns()
 
     def __select_command__(self, command=()):
         """
@@ -241,8 +262,8 @@ class Okaertool:
         self.logger.debug(f'Value of command selection: {command_endpoint_value}')
 
         with self.lock:
-            self.device.SetWireInValue(self.INWIRE_COMMAND_ENDPOINT, command_endpoint_value)
-            self.device.UpdateWireIns()
+            self.fpga.SetWireInValue(self.INWIRE_COMMAND_ENDPOINT, command_endpoint_value)
+            self.fpga.UpdateWireIns()
 
     def _new_spikes(self):
         """Create an empty Spikes struct for each input."""
@@ -301,14 +322,14 @@ class Okaertool:
 
             # The device is not thread-safe: hold the lock during the (blocking) read
             with self.lock:
-                num_read_bytes = self.device.ReadFromBlockPipeOut(
+                num_read_bytes = self.fpga.ReadFromBlockPipeOut(
                     self.OUTPIPE_ENDPOINT,
                     self.USB_BLOCK_SIZE,
                     buffer
                 )
 
             if num_read_bytes < 0:
-                self.logger.warning(f'USB read error: {ok.okCFrontPanel_GetErrorString(num_read_bytes)}')
+                self.logger.warning(f'USB read error: {ok_error_string(num_read_bytes)}')
                 break
 
             if num_read_bytes > 0:
@@ -506,7 +527,7 @@ class Okaertool:
 
         buffer = np.fromfile(file, dtype=np.uint8)
         self.__select_command__(['sequencer'])
-        num_sent_bytes = self.device.WriteToBlockPipeIn(self.INPIPE_ENDPOINT, self.USB_BLOCK_SIZE, buffer)
+        num_sent_bytes = self.fpga.WriteToBlockPipeIn(self.INPIPE_ENDPOINT, self.USB_BLOCK_SIZE, buffer)
         self.logger.info(f'Number of sent bytes: {num_sent_bytes}. Number of sent spikes: {num_sent_bytes / self.SPIKE_SIZE_BYTES}')
         self.__select_command__(['idle'])
 
@@ -527,15 +548,15 @@ class Okaertool:
 
         address_value = ((register_address & 0xFFFF) << 16) | (register_value & 0xFFFF)
         with self.lock:
-            self.device.SetWireInValue(self.INWIRE_CONFIG_ENDPOINT, address_value)
-            self.device.UpdateWireIns()
+            self.fpga.SetWireInValue(self.INWIRE_CONFIG_ENDPOINT, address_value)
+            self.fpga.UpdateWireIns()
 
         # The FPGA latches the register while the config command is active
         self.__select_command__([config_commands[device]])
         self.__select_command__(['idle'])
 
         with self.lock:
-            self.device.SetWireInValue(self.INWIRE_CONFIG_ENDPOINT, 0x00000000)
-            self.device.UpdateWireIns()
+            self.fpga.SetWireInValue(self.INWIRE_CONFIG_ENDPOINT, 0x00000000)
+            self.fpga.UpdateWireIns()
         self.logger.info(f'Configuring {device} with address {hex(register_address)} and value {hex(register_value)}')
         return 0
