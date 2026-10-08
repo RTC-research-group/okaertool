@@ -20,3 +20,4 @@ python_package/test/Hand.dat
 python_package/test/design_1_wrapper.bit
 python_package/test/design_1_wrapper_12MHz.bit
 FrontPanel-Ubuntu*/
+.venv_okaer/
