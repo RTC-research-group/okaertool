@@ -5,6 +5,8 @@
 
 library IEEE;
 use IEEE.std_logic_1164.ALL;
+library UNISIM;
+use UNISIM.vcomponents.all;
 use work.okt_global_pkg.all;
 use work.okt_top_pkg.all;
 use work.okt_imu_pkg.all;
@@ -88,16 +90,13 @@ architecture Behavioral of okt_top is
 	signal status_cu  : std_logic_vector(LEDS_BITS_WIDTH - 1 downto 0);
 	signal status_ecu : std_logic_vector(LEDS_BITS_WIDTH - 1 downto 0);
 	signal led_status : std_logic_vector(LEDS_BITS_WIDTH - 1 downto 0);
+	signal led_off    : std_logic_vector(LEDS_BITS_WIDTH - 1 downto 0);
 
 	signal cmd : std_logic_vector(COMMAND_BIT_WIDTH - 1 downto 0);
 
 	--osu signals
 	signal osu_imu_ack_n : std_logic := '1'; -- TODO: remove initialization
 	signal ecu_osu_ack_n : std_logic;
-
-	-- DEBUG
-	attribute MARK_DEBUG              : string;
-	attribute MARK_DEBUG of status_cu : signal is "TRUE";
 
 begin
 
@@ -109,17 +108,16 @@ begin
 	end generate;
 
 	gen_leds_xem7310 : if G_XEM7310 generate
-		-- XEM7310 leds are on when 0 and off when 'Z'.
-		process(led_status)
-		begin
-			for i in leds'range loop
-				if led_status(i) = '1' then
-					leds(i) <= '0';
-				else
-					leds(i) <= 'Z';
-				end if;
-			end loop;
-		end process;
+		-- XEM7310 leds are on when 0 and off when 'Z'. Explicit OBUFT: an inferred 'Z' is converted to logic (Synth 8-5799).
+		led_off <= not led_status;
+		gen_led : for i in leds'range generate
+			led_obuft : OBUFT
+				port map(
+					I => '0',
+					T => led_off(i),
+					O => leds(i)
+				);
+		end generate;
 	end generate;
 
 	rst_n    <= rst_ext_n_latch_1 and (not rst_sw_int);

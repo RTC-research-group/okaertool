@@ -56,6 +56,9 @@ architecture Behavioral of okt_cu is
 
 	-- USB signals
 	signal okClk : std_logic;
+	-- Keeps the net name so the UCF can reference "okt_top_0/cu_inst/okClk"
+	attribute KEEP : string;
+	attribute KEEP of okClk : signal is "TRUE";
 	signal okHE  : std_logic_vector(OK_HE_WIDTH_BUS - 1 downto 0);
 	signal okEH  : std_logic_vector(OK_EH_WIDTH_BUS - 1 downto 0);
 	signal okEHx : std_logic_vector(OK_EH_WIDTH_BUS * OK_NUM_okEHx_END_POINTS - 1 downto 0);
