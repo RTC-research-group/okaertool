@@ -76,14 +76,6 @@ architecture Behavioral of okt_cu is
 	signal ep80_blockstrobe : std_logic; -- @suppress "Signal ep80_blockstrobe is never read"
 	signal ep80_ready       : std_logic;
 
-	-- DEBUG
-	attribute MARK_DEBUG : string;
-	attribute MARK_DEBUG of rst_n, rst_sw_int, ecu_data, ecu_rd, ecu_ready, osu_data,
-							osu_wr, osu_ready, input_sel, status, cmd, config_data, config_addr, config_en,
-							n_command, n_input_sel, n_rst_sw_int, okClk, okHE, okEH, okEHx, ep00wire, ep01wire, n_rst_sw_ext,
-							ep02wire, ep03wire, epA0_datain, epA0_read, epA0_blockstrobe, epA0_ready, ep80_dataout,
-							ep80_write, ep80_blockstrobe, ep80_ready : signal is "TRUE";
-
 begin
 	-- Connect the signals to the top level
 	ecu_rd      <= epA0_read;
@@ -182,11 +174,11 @@ begin
 	signal_update : process(okClk, rst_n)
 	begin
 		if (rst_n = '0') then
-			n_command    <= (others => '0');
-			n_input_sel  <= (others => '0');
-			config_en    <= (others => '0');
-			config_data  <= (others => '0');
-			config_addr  <= (others => '0');
+			n_command   <= (others => '0');
+			n_input_sel <= (others => '0');
+			config_en   <= (others => '0');
+			config_data <= (others => '0');
+			config_addr <= (others => '0');
 
 		elsif rising_edge(okClk) then
 			n_command   <= ep00wire(COMMAND_BIT_WIDTH - 1 downto 0);

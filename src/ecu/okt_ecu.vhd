@@ -25,7 +25,7 @@ entity okt_ecu is
         -- CU interface
         out_data      : out std_logic_vector(BUFFER_BITS_WIDTH - 1 downto 0);
         out_rd        : in  std_logic;
-        out_ready     : out std_logic; -- FIFO contains enough data for a USB transfer
+        out_ready     : out std_logic;  -- FIFO contains enough data for a USB transfer
         status        : out std_logic_vector(LEDS_BITS_WIDTH - 1 downto 0);
         cmd           : in  std_logic_vector(COMMAND_BIT_WIDTH - 1 downto 0) -- cmd(0): enable capture
     );
@@ -56,14 +56,6 @@ architecture Behavioral of okt_ecu is
     signal ECU_usb_ready : std_logic;
 
     signal n_command : std_logic_vector(COMMAND_BIT_WIDTH - 1 downto 0);
-
-    -- DEBUG
-    attribute MARK_DEBUG : string;
-    attribute MARK_DEBUG of rst_n, ecu_req_n, aer_data, ecu_out_ack_n, out_data, out_rd, out_ready, cmd,
-                            r_okt_ecu_control_state, n_okt_ecu_control_state, r_timestamp, n_timestamp,
-                            n_ack_n, ECU_fifo_w_data, ECU_fifo_w_en, ECU_fifo_r_data, ECU_fifo_r_en,
-                            ECU_fifo_full, ECU_fifo_fill_count, ECU_usb_ready, n_command,
-                            r_timestamp_ovf_pending : signal is "TRUE";
 
 begin
 
@@ -132,9 +124,9 @@ begin
         else
             n_timestamp <= (others => '0');
         end if;
-        n_ack_n         <= '1';
-        ECU_fifo_w_data <= (others => '0');
-        ECU_fifo_w_en   <= '0';
+        n_ack_n                 <= '1';
+        ECU_fifo_w_data         <= (others => '0');
+        ECU_fifo_w_en           <= '0';
 
         case r_okt_ecu_control_state is
             when idle =>

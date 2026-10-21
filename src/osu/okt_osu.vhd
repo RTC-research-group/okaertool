@@ -79,7 +79,7 @@ architecture Behavioral of okt_osu is
 	signal ovf_limit_minus_2  : std_logic_vector(TIMESTAMP_BITS_WIDTH - 1 downto 0);
 	signal comp_ts_gt_ovf     : std_logic;
 
-	type state is (idle, timestamp_check, wait_ack_rise, data_trigger_0, data_trigger_1, data_trigger_2, wait_ovf);
+	type   state                                            is (idle, timestamp_check, wait_ack_rise, data_trigger_0, data_trigger_1, data_trigger_2, wait_ovf);
 	signal r_okt_osu_control_state, n_okt_osu_control_state : state;
 
 begin
@@ -120,10 +120,10 @@ begin
 		if rst_n /= '0' then
 			case n_command(2 downto 0) is
 
-				when Mask_MON(2 downto 0) =>    -- Monitor: output inactive, the IMU ack comes from the ECU
+				when Mask_MON(2 downto 0) => -- Monitor: output inactive, the IMU ack comes from the ECU
 					ecu_node_out_ack_n <= ecu_in_ack_n;
 
-				when Mask_PASS(2 downto 0) =>   -- Bypass: the IMU ack comes from the output
+				when Mask_PASS(2 downto 0) => -- Bypass: the IMU ack comes from the output
 					ecu_node_out_ack_n <= node_in_osu_ack_n;
 					node_in_data       <= aer_in_data(OUT_DATA_BITS_WIDTH - 1 downto 0);
 					node_req_n         <= req_in_data_n;
@@ -133,7 +133,7 @@ begin
 					node_in_data       <= aer_in_data(OUT_DATA_BITS_WIDTH - 1 downto 0);
 					node_req_n         <= req_in_data_n;
 
-				when Mask_SEQ(2 downto 0) =>    -- Sequencer: the output is driven by the FSM, internal acks are cut
+				when Mask_SEQ(2 downto 0) => -- Sequencer: the output is driven by the FSM, internal acks are cut
 					node_in_data <= aer_data(OUT_DATA_BITS_WIDTH - 1 downto 0);
 					node_req_n   <= out_req;
 					out_ack      <= node_in_osu_ack_n;
@@ -144,7 +144,7 @@ begin
 					out_ack            <= node_in_osu_ack_n;
 					ecu_node_out_ack_n <= ecu_in_ack_n;
 
-				when others =>                  -- Rest of commands: output inactive
+				when others =>          -- Rest of commands: output inactive
 					null;
 
 			end case;

@@ -21,18 +21,18 @@ ARCHITECTURE behavior OF okt_ecu_tb IS
 
     signal aer_data_r : std_logic_vector(BUFFER_BITS_WIDTH - 1 downto 0) := (others => '0');
     signal force_ovf  : std_logic;
-    signal command  : std_logic_vector(COMMAND_BIT_WIDTH - 1 downto 0);
+    signal command    : std_logic_vector(COMMAND_BIT_WIDTH - 1 downto 0);
 
     --Outputs
     signal ack_n     : std_logic;
-    signal out_data  : std_logic_vector(BUFFER_BITS_WIDTH - 1 downto 0);  -- @suppress "Signal out_data is never read"
+    signal out_data  : std_logic_vector(BUFFER_BITS_WIDTH - 1 downto 0); -- @suppress "Signal out_data is never read"
     signal out_rd    : std_logic;
     signal out_ready : std_logic;
 
     -- Clock period definitions
     constant CLK_period : time := 20 ns;
 
-    type state is (idle, req_fall, req_rise);
+    type   state                     is (idle, req_fall, req_rise);
     signal current_state, next_state : state;
 
 BEGIN
@@ -73,7 +73,7 @@ BEGIN
         -- insert stimulus here
 
         report "Send a few AER events";
-        command <= Mask_MON;
+        command   <= Mask_MON;
         wait for 500 us;
         report "Force an overflow for 2 ms";
         force_ovf <= '1';
@@ -81,7 +81,7 @@ BEGIN
         report "Release overflow";
         force_ovf <= '0';
         wait for 10 ms;
-        command <= Mask_IDLE;
+        command   <= Mask_IDLE;
         report "End of simulation";
         finish;
     end process;

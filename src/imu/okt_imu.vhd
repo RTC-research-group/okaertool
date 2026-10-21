@@ -10,29 +10,24 @@ USE ieee.numeric_std.ALL;
 use work.okt_imu_pkg.all;
 use work.okt_global_pkg.all;
 
-
 entity okt_imu is
 	Port(
-		clk            : in  std_logic;
-		rst_n          : in  std_logic;
-		
-		in0_data       : in  std_logic_vector(BUFFER_BITS_WIDTH - INPUT_BITS_WIDTH - 1 downto 0);
-		in0_req_n      : in  std_logic;
-		in0_ack_n      : out std_logic;
-		
-		in1_data       : in  std_logic_vector(BUFFER_BITS_WIDTH - INPUT_BITS_WIDTH - 1 downto 0);
-		in1_req_n      : in  std_logic;
-		in1_ack_n      : out std_logic;
-		
-		in2_data       : in  std_logic_vector(BUFFER_BITS_WIDTH - INPUT_BITS_WIDTH - 1 downto 0);
-		in2_req_n      : in  std_logic;
-		in2_ack_n      : out std_logic;
-		
-		input_select   : in  std_logic_vector(NUM_INPUTS - 1 downto 0);
-		out_data       : out std_logic_vector(BUFFER_BITS_WIDTH - 1 downto 0);
-		out_req_n      : out std_logic;
+		clk               : in  std_logic;
+		rst_n             : in  std_logic;
+		in0_data          : in  std_logic_vector(BUFFER_BITS_WIDTH - INPUT_BITS_WIDTH - 1 downto 0);
+		in0_req_n         : in  std_logic;
+		in0_ack_n         : out std_logic;
+		in1_data          : in  std_logic_vector(BUFFER_BITS_WIDTH - INPUT_BITS_WIDTH - 1 downto 0);
+		in1_req_n         : in  std_logic;
+		in1_ack_n         : out std_logic;
+		in2_data          : in  std_logic_vector(BUFFER_BITS_WIDTH - INPUT_BITS_WIDTH - 1 downto 0);
+		in2_req_n         : in  std_logic;
+		in2_ack_n         : out std_logic;
+		input_select      : in  std_logic_vector(NUM_INPUTS - 1 downto 0);
+		out_data          : out std_logic_vector(BUFFER_BITS_WIDTH - 1 downto 0);
+		out_req_n         : out std_logic;
 		ecu_node_in_ack_n : in  std_logic
-);
+	);
 end okt_imu;
 
 architecture Behavioral of okt_imu is
@@ -40,14 +35,12 @@ architecture Behavioral of okt_imu is
 	signal n_out_req_n, n_out_ack_n : std_logic;
 	signal n_out_data               : std_logic_vector(BUFFER_BITS_WIDTH - 1 downto 0);
 
-	type state is (idle, in0, in1, in2);
+	type   state                                    is (idle, in0, in1, in2);
 	signal r_okt_control_state, n_okt_control_state : state;
 
 	-- DEBUG
-	attribute MARK_DEBUG : string; 
-	attribute MARK_DEBUG of rst_n, in0_data, in0_req_n, in0_ack_n, in1_data, in1_req_n, in1_ack_n, 
-												in2_data, in2_req_n, in2_ack_n, input_select, out_data, out_req_n, ecu_node_in_ack_n, 
-												n_out_req_n, n_out_ack_n, n_out_data, r_okt_control_state, n_okt_control_state : signal is "TRUE";
+	attribute MARK_DEBUG                                                                                                                                                                                                                                                : string;
+	attribute MARK_DEBUG of rst_n, in0_data, in0_req_n, in0_ack_n, in1_data, in1_req_n, in1_ack_n, in2_data, in2_req_n, in2_ack_n, input_select, out_data, out_req_n, ecu_node_in_ack_n, n_out_req_n, n_out_ack_n, n_out_data, r_okt_control_state, n_okt_control_state : signal is "TRUE";
 
 begin
 
@@ -88,7 +81,7 @@ begin
 				n_out_data(BUFFER_BITS_WIDTH - 1 downto BUFFER_BITS_WIDTH - INPUT_BITS_WIDTH) <= std_logic_vector(to_unsigned(0, INPUT_BITS_WIDTH));
 				n_out_data(BUFFER_BITS_WIDTH - INPUT_BITS_WIDTH - 1 downto 0)                 <= in0_data;
 				n_out_req_n                                                                   <= in0_req_n;
-				in0_ack_n                                                                   <= n_out_ack_n;
+				in0_ack_n                                                                     <= n_out_ack_n;
 
 				if input_select = std_logic_vector(to_unsigned(0, input_select'length)) then
 					n_okt_control_state <= idle;
@@ -99,10 +92,10 @@ begin
 
 					elsif input_select(2) = '1' and in2_req_n = '0' then
 						n_okt_control_state <= in2;
-						
+
 					elsif unsigned(input_select) = 0 then
 						n_okt_control_state <= idle;
-						
+
 					end if;
 				end if;
 
@@ -110,7 +103,7 @@ begin
 				n_out_data(BUFFER_BITS_WIDTH - 1 downto BUFFER_BITS_WIDTH - INPUT_BITS_WIDTH) <= std_logic_vector(to_unsigned(1, INPUT_BITS_WIDTH));
 				n_out_data(BUFFER_BITS_WIDTH - INPUT_BITS_WIDTH - 1 downto 0)                 <= in1_data;
 				n_out_req_n                                                                   <= in1_req_n;
-				in1_ack_n                                                                   <= n_out_ack_n;
+				in1_ack_n                                                                     <= n_out_ack_n;
 
 				if input_select = std_logic_vector(to_unsigned(0, input_select'length)) then
 					n_okt_control_state <= idle;
@@ -124,7 +117,7 @@ begin
 
 					elsif unsigned(input_select) = 0 then
 						n_okt_control_state <= idle;
-						
+
 					end if;
 				end if;
 
@@ -132,7 +125,7 @@ begin
 				n_out_data(BUFFER_BITS_WIDTH - 1 downto BUFFER_BITS_WIDTH - INPUT_BITS_WIDTH) <= std_logic_vector(to_unsigned(2, INPUT_BITS_WIDTH));
 				n_out_data(BUFFER_BITS_WIDTH - INPUT_BITS_WIDTH - 1 downto 0)                 <= in2_data;
 				n_out_req_n                                                                   <= in2_req_n;
-				in2_ack_n                                                                    <= n_out_ack_n;
+				in2_ack_n                                                                     <= n_out_ack_n;
 
 				if input_select = std_logic_vector(to_unsigned(0, input_select'length)) then
 					n_okt_control_state <= idle;
@@ -146,7 +139,7 @@ begin
 
 					elsif unsigned(input_select) = 0 then
 						n_okt_control_state <= idle;
-						
+
 					end if;
 				end if;
 
