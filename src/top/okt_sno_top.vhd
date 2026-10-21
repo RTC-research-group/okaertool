@@ -26,7 +26,7 @@ use work.okt_sno_pkg.all;
 entity okt_sno_top is
     port(
         clock        : in  std_logic;
-        rst_n      : in  std_logic;
+        rst_n        : in  std_logic;
         -- AER OUTPUT interface
         AER_DATA_OUT : out std_logic_vector(NAS_AER_ADDRESS_BITS - 1 downto 0);
         AER_REQ      : out std_logic;

@@ -10,11 +10,11 @@ entity Fifo_tb is
 end Fifo_tb;
 
 architecture behavior of Fifo_tb is
-    signal rst_n, w_en, r_en, empty, full : std_logic;
-    signal w_data, r_data                 : std_logic_vector(31 downto 0);
-    constant clk_period                   : time      := 10 ns;
-    signal clk                            : std_logic := '1';
-    signal runTest                        : std_logic := '1';
+    signal   rst_n, w_en, r_en, empty, full : std_logic;
+    signal   w_data, r_data                 : std_logic_vector(31 downto 0);
+    constant clk_period                     : time      := 10 ns;
+    signal   clk                            : std_logic := '1';
+    signal   runTest                        : std_logic := '1';
 
     -- This function encapsulates the assertion checking code for standard logic vectors
     function slvAssert(expected : std_logic_vector; actual : std_logic_vector; testName : String) return BOOLEAN is
@@ -68,7 +68,7 @@ begin
     testProc : process
         variable expectedValue : std_logic_vector(r_data'range) := x"00000000";
         -- We have to create an arbitraily large number for a string (super annoying)
-        variable result        : Boolean;  -- @suppress "Variable result is never read"
+        variable result        : Boolean; -- @suppress "Variable result is never read"
     begin
         -- Initialize important signals
         rst_n <= '1';
@@ -250,36 +250,36 @@ begin
         expectedValue := x"00000007";
         result        := slvAssert(expectedValue, r_data, String'(" r_data check 7 failed"));
         wait until rising_edge(clk);
-        
+
         r_en <= '1';
         wait until rising_edge(clk);
         r_en <= '0';
         wait until rising_edge(clk);
-        
+
         w_data <= x"00000001";
         w_en   <= '1';
         r_en   <= '1';
         wait until rising_edge(clk);
-        
+
         w_data <= x"00000001";
         w_en   <= '1';
         r_en   <= '1';
         wait until rising_edge(clk);
-        
+
         w_data <= x"00000001";
         w_en   <= '1';
         r_en   <= '1';
         wait until rising_edge(clk);
-        
+
         w_data <= x"00000001";
         w_en   <= '1';
         r_en   <= '1';
         wait until rising_edge(clk);
-        
+
         w_data <= x"00000000";
         w_en   <= '0';
         r_en   <= '0';
-        
+
         wait until rising_edge(clk);
         r_en <= '1';
 

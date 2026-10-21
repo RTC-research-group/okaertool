@@ -81,12 +81,12 @@ architecture simulate of okt_top_tb is
 
 	signal cuenta : std_logic_vector(7 downto 0);
 
-	type state is (idle, req_fall, req_rise);
+	type   state                                   is (idle, req_fall, req_rise);
 	signal current_state_rome_a, next_state_rome_a : state;
 	signal current_state_rome_b, next_state_rome_b : state;
 	signal current_state_node, next_state_node     : state;
 
-	type state_handshake is (idle, req_fall, delay1, delay2);
+	type   state_handshake                   is (idle, req_fall, delay1, delay2);
 	signal current_state_out, next_state_out : state_handshake;
 
 	---------------------------------------------------------------------------------------------
@@ -178,18 +178,18 @@ begin
 		-- duplicate the desired pipe procedures as required, change the names
 		-- of the duplicated procedure to a unique identifiers, and alter the
 		-- pipe array in that procedure to your newly generated arrays here.
-		type PIPEIN_ARRAY is array (0 to pipeInSize - 1) of std_logic_vector(7 downto 0);
-		variable pipeIn : PIPEIN_ARRAY;
+		type     PIPEIN_ARRAY is array (0 to pipeInSize - 1) of std_logic_vector(7 downto 0);
+		variable pipeIn       : PIPEIN_ARRAY;
 
-		type PIPEOUT_ARRAY is array (0 to pipeOutSize - 1) of std_logic_vector(7 downto 0);
-		variable pipeOut : PIPEOUT_ARRAY;
+		type     PIPEOUT_ARRAY is array (0 to pipeOutSize - 1) of std_logic_vector(7 downto 0);
+		variable pipeOut       : PIPEOUT_ARRAY;
 
-		type STD_ARRAY is array (0 to 31) of std_logic_vector(31 downto 0);
+		type     STD_ARRAY is array (0 to 31) of std_logic_vector(31 downto 0);
 		variable WireIns   : STD_ARRAY; -- 32x32 array storing WireIn values
 		variable WireOuts  : STD_ARRAY; -- 32x32 array storing WireOut values 
 		variable Triggered : STD_ARRAY; -- 32x32 array storing IsTriggered values
 
-		type REGISTER_ARRAY is array (0 to registerSetSize - 1) of std_logic_vector(31 downto 0);
+		type     REGISTER_ARRAY   is array (0 to registerSetSize - 1) of std_logic_vector(31 downto 0);
 		variable u32Address       : REGISTER_ARRAY;
 		variable u32Data          : REGISTER_ARRAY;
 		variable u32Count         : std_logic_vector(31 downto 0);
@@ -634,7 +634,7 @@ begin
 		-- ReadRegister
 		-----------------------------------------------------------------------
 		procedure ReadRegister(
-			address : in std_logic_vector(31 downto 0);
+			address : in  std_logic_vector(31 downto 0);
 			data    : out std_logic_vector(31 downto 0)) is
 		begin
 			wait until (rising_edge(hi_clk));

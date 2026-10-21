@@ -27,49 +27,49 @@ ARCHITECTURE behavior OF okt_imu_tb IS
 	signal node_req  : std_logic;
 	signal node_ack  : std_logic;
 
-	signal in0_data, in1_data, in2_data: std_logic_vector(BUFFER_BITS_WIDTH - INPUT_BITS_WIDTH - 1 downto 0);
+	signal in0_data, in1_data, in2_data : std_logic_vector(BUFFER_BITS_WIDTH - INPUT_BITS_WIDTH - 1 downto 0);
 
 	signal input_select : std_logic_vector(NUM_INPUTS - 1 downto 0);
 
-	signal out_data : std_logic_vector(BUFFER_BITS_WIDTH - 1 downto 0);  -- @suppress "Signal out_data is never read"
+	signal out_data : std_logic_vector(BUFFER_BITS_WIDTH - 1 downto 0); -- @suppress "Signal out_data is never read"
 	signal out_req  : std_logic;
 	signal out_ack  : std_logic;
 
 	-- Clock period definitions
 	constant CLK_period : time := 20 ns;
 
-	type state is (idle, req_fall, req_rise);
-	signal current_state_rome_a, next_state_rome_a       : state;
-	signal current_state_rome_b, next_state_rome_b       : state;
-	signal current_state_node, next_state_node           : state;
+	type   state                                   is (idle, req_fall, req_rise);
+	signal current_state_rome_a, next_state_rome_a : state;
+	signal current_state_rome_b, next_state_rome_b : state;
+	signal current_state_node, next_state_node     : state;
 
-	type state_handshake is (idle, req_fall);
+	type   state_handshake                   is (idle, req_fall);
 	signal current_state_out, next_state_out : state_handshake;
 
 BEGIN
-	
+
 	in0_data <= std_logic_vector(to_unsigned(0, BUFFER_BITS_WIDTH - INPUT_BITS_WIDTH - ROME_DATA_BITS_WIDTH)) & rome_a_data;
 	in1_data <= std_logic_vector(to_unsigned(0, BUFFER_BITS_WIDTH - INPUT_BITS_WIDTH - ROME_DATA_BITS_WIDTH)) & rome_b_data;
 	in2_data <= std_logic_vector(to_unsigned(0, BUFFER_BITS_WIDTH - INPUT_BITS_WIDTH - NODE_DATA_BITS_WIDTH)) & node_data;
-	
+
 	-- Component Instantiation
 	okt_imu : entity work.okt_imu
 		PORT MAP(
-			clk          => clk,
-			rst_n        => rst,
-			in0_data     => in0_data,
-			in0_req_n    => rome_a_req,
-			in0_ack_n    => rome_a_ack,
-			in1_data     => in1_data,
-			in1_req_n    => rome_b_req,
-			in1_ack_n    => rome_b_ack,
-			in2_data     => in2_data,
-			in2_req_n    => node_req,
-			in2_ack_n    => node_ack,
-			input_select => input_select,
-			out_data     => out_data,
-			out_req_n    => out_req,
-			ecu_node_in_ack_n      => out_ack
+			clk               => clk,
+			rst_n             => rst,
+			in0_data          => in0_data,
+			in0_req_n         => rome_a_req,
+			in0_ack_n         => rome_a_ack,
+			in1_data          => in1_data,
+			in1_req_n         => rome_b_req,
+			in1_ack_n         => rome_b_ack,
+			in2_data          => in2_data,
+			in2_req_n         => node_req,
+			in2_ack_n         => node_ack,
+			input_select      => input_select,
+			out_data          => out_data,
+			out_req_n         => out_req,
+			ecu_node_in_ack_n => out_ack
 		);
 
 	-- Clock process definitions
@@ -140,33 +140,33 @@ BEGIN
 	signals_update : process(clk, rst)
 	begin
 		if rst = '0' then
-			current_state_rome_a    <= idle;
-			current_state_rome_b    <= idle;
-			current_state_node      <= idle;
-			current_state_out       <= idle;
+			current_state_rome_a <= idle;
+			current_state_rome_b <= idle;
+			current_state_node   <= idle;
+			current_state_out    <= idle;
 
 		elsif rising_edge(clk) then
-			current_state_rome_a    <= next_state_rome_a;
-			current_state_rome_b    <= next_state_rome_b;
-			current_state_node      <= next_state_node;
-			current_state_out       <= next_state_out;
+			current_state_rome_a <= next_state_rome_a;
+			current_state_rome_b <= next_state_rome_b;
+			current_state_node   <= next_state_node;
+			current_state_out    <= next_state_out;
 
 		end if;
 	end process;
 
 	FSM_transition : process(current_state_rome_a, rome_a_ack, current_state_rome_b, rome_b_ack, current_state_node, node_ack)
 	begin
-		next_state_rome_a    <= current_state_rome_a;
-		next_state_rome_b    <= current_state_rome_b;
-		next_state_node      <= current_state_node;
+		next_state_rome_a <= current_state_rome_a;
+		next_state_rome_b <= current_state_rome_b;
+		next_state_node   <= current_state_node;
 
-		rome_a_req    <= '1';
-		rome_b_req    <= '1';
-		node_req      <= '1';
+		rome_a_req <= '1';
+		rome_b_req <= '1';
+		node_req   <= '1';
 
-		rome_a_data    <= (others => '0');
-		rome_b_data    <= (others => '0');
-		node_data      <= (others => '0');
+		rome_a_data <= (others => '0');
+		rome_b_data <= (others => '0');
+		node_data   <= (others => '0');
 
 		case current_state_rome_a is
 			when idle =>
